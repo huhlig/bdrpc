@@ -327,7 +327,7 @@ This would automatically generate:
 - [ADR-011: Large Transfer Streaming](adr/ADR-011-large-transfer-streaming.md)
 - [file_transfer_service_async.rs](../bdrpc/examples/file_transfer_service_async.rs) - Complete working example
 - [file_transfer_service.rs](../bdrpc/examples/file_transfer_service.rs) - Manual chunking approach
-- [file_transfer.rs](../bdrpc/examples/file_transfer.rs) - Low-level protocol
+- [file_transfer.rs](../bdrpc/examples/file_transfer_manual.rs) - Low-level protocol
 
 ## Summary
 

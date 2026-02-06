@@ -564,7 +564,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("\n📚 Related:");
     println!("   • See ADR-011 for full large transfer design");
     println!("   • See file_transfer_service.rs for manual chunking");
-    println!("   • See file_transfer.rs for low-level protocol");
+    println!("   • See file_transfer_manual for low-level protocol");
 
     Ok(())
 }

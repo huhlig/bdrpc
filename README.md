@@ -6,10 +6,10 @@
 [![Build](https://github.com/huhlig/bdrpc/actions/workflows/ci.yml/badge.svg)](https://github.com/huhlig/bdrpc/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://huhlig.github.io/bdrpc/)
 
-BDRPC is a Rust library for implementing bi-directional remote procedure calls (RPC) over TCP/IP connections. It 
-provides a simple and efficient way to communicate between different processes or machines, enabling remote procedure 
-calls and data exchange. It is designed to be straightforward to use, flexible, and highly performant, making it 
-suitable for a wide range of applications, from simple client-server interactions to complex distributed systems. It 
+BDRPC is a Rust library for implementing bi-directional remote procedure calls (RPC) over TCP/IP connections. It
+provides a simple and efficient way to communicate between different processes or machines, enabling remote procedure
+calls and data exchange. It is designed to be straightforward to use, flexible, and highly performant, making it
+suitable for a wide range of applications, from simple client-server interactions to complex distributed systems. It
 supports various protocols and data formats, allowing seamless integration with existing systems and frameworks.
 
 ## Features
@@ -22,10 +22,10 @@ supports various protocols and data formats, allowing seamless integration with 
 
 ## Why BDRPC and not Other Libraries (gRPC, Cap'n'Proto, tarpc)?
 
-BDRPC stands out from other RPC libraries due to its focus on bi-directional communication, robust error handling, and 
-extensibility. While other libraries may offer similar features, BDRPC provides a more comprehensive solution that 
-addresses the needs of modern peer to peer distributed systems. Its support for custom transports and serialization 
-formats allows for seamless integration with existing systems, making it a versatile choice for a wide range of 
+BDRPC stands out from other RPC libraries due to its focus on bi-directional communication, robust error handling, and
+extensibility. While other libraries may offer similar features, BDRPC provides a more comprehensive solution that
+addresses the needs of modern peer to peer distributed systems. Its support for custom transports and serialization
+formats allows for seamless integration with existing systems, making it a versatile choice for a wide range of
 
 ## Channel Types: In-Memory vs Network
 
@@ -34,18 +34,21 @@ BDRPC provides two types of channels for different use cases:
 ### In-Memory Channels
 
 Created with `Channel::new_in_memory()`, these channels:
+
 - ✅ Work within a single process only
 - ✅ Perfect for testing and examples
 - ✅ No network overhead
 - ❌ Cannot communicate across network boundaries
 
 **Use for:**
+
 - Unit tests
 - In-process communication
 - Learning the channel API
 - Prototyping
 
 **Example:**
+
 ```rust
 use bdrpc::channel::{Channel, ChannelId, Protocol};
 
@@ -62,18 +65,21 @@ let (sender, receiver) = Channel::<MyProtocol>::new_in_memory(ChannelId::new(), 
 ### Network Channels
 
 Created via the Endpoint API, these channels:
+
 - ✅ Work across network boundaries
 - ✅ Automatically wired to transports (TCP, etc.)
 - ✅ Support protocol negotiation
 - ✅ Handle serialization/deserialization
 
 **Use for:**
+
 - Production applications
 - Client-server communication
 - Distributed systems
 - Real network RPC
 
 **Example (using #[bdrpc::service] macro - recommended):**
+
 ```rust,no_run
 use bdrpc::service;
 use bdrpc::endpoint::{Endpoint, EndpointConfig};
@@ -100,43 +106,44 @@ impl CalculatorServer for MyCalculator {
     }
 }
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
-// Server side
-let mut server_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-server_endpoint.register_bidirectional("Calculator", 1).await?;
-server_endpoint.listen("127.0.0.1:8080").await?;
+async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    // Server side
+    let mut server_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    server_endpoint.register_bidirectional("Calculator", 1).await?;
+    server_endpoint.listen("127.0.0.1:8080").await?;
 
-// Accept connection and get channels
-let (sender, receiver) = server_endpoint.accept_channels::<CalculatorProtocol>().await?;
+    // Accept connection and get channels
+    let (sender, receiver) = server_endpoint.accept_channels::<CalculatorProtocol>().await?;
 
-// Create dispatcher and handle requests
-let calculator = MyCalculator;
-let dispatcher = CalculatorDispatcher::new(calculator);
+    // Create dispatcher and handle requests
+    let calculator = MyCalculator;
+    let dispatcher = CalculatorDispatcher::new(calculator);
 
-tokio::spawn(async move {
-    while let Some(request) = receiver.recv().await {
-        let response = dispatcher.dispatch(request).await;
-        sender.send(response).await.ok();
-    }
-});
+    tokio::spawn(async move {
+        while let Some(request) = receiver.recv().await {
+            let response = dispatcher.dispatch(request).await;
+            sender.send(response).await.ok();
+        }
+    });
 
-// Client side
-let mut client_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-client_endpoint.register_bidirectional("Calculator", 1).await?;
-client_endpoint.connect("127.0.0.1:8080").await?;
+    // Client side
+    let mut client_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    client_endpoint.register_bidirectional("Calculator", 1).await?;
+    client_endpoint.connect("127.0.0.1:8080").await?;
 
-// Get channels and create client
-let (sender, receiver) = client_endpoint.get_channels::<CalculatorProtocol>().await?;
-let client = CalculatorClient::new(sender, receiver);
+    // Get channels and create client
+    let (sender, receiver) = client_endpoint.get_channels::<CalculatorProtocol>().await?;
+    let client = CalculatorClient::new(sender, receiver);
 
-// Make RPC calls
-let result = client.add(5, 3).await??;
-println!("5 + 3 = {}", result);
-# Ok(())
-# }
+    // Make RPC calls
+    let result = client.add(5, 3).await??;
+    println!("5 + 3 = {}", result);
+    Ok(())
+}
 ```
 
 **Manual example (without macro):**
+
 ```rust,no_run
 use bdrpc::endpoint::{Endpoint, EndpointConfig};
 use bdrpc::serialization::JsonSerializer;
@@ -166,59 +173,131 @@ impl Protocol for CalculatorProtocol {
     }
 }
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
-// Server side
-let mut server_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-server_endpoint.register_bidirectional("Calculator", 1).await?;
-server_endpoint.listen("127.0.0.1:8080").await?;
+async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    // Server side
+    let mut server_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    server_endpoint.register_bidirectional("Calculator", 1).await?;
+    server_endpoint.listen("127.0.0.1:8080").await?;
 
-let (sender, mut receiver) = server_endpoint.accept_channels::<CalculatorProtocol>().await?;
+    let (sender, mut receiver) = server_endpoint.accept_channels::<CalculatorProtocol>().await?;
 
-// Handle requests manually
-tokio::spawn(async move {
-    while let Some(request) = receiver.recv().await {
-        let response = match request {
-            CalculatorProtocol::AddRequest { a, b } => {
-                CalculatorProtocol::AddResponse { result: a + b }
-            }
-            CalculatorProtocol::SubtractRequest { a, b } => {
-                CalculatorProtocol::SubtractResponse { result: a - b }
-            }
-            _ => continue, // Ignore responses
-        };
-        sender.send(response).await.ok();
+    // Handle requests manually
+    tokio::spawn(async move {
+        while let Some(request) = receiver.recv().await {
+            let response = match request {
+                CalculatorProtocol::AddRequest { a, b } => {
+                    CalculatorProtocol::AddResponse { result: a + b }
+                }
+                CalculatorProtocol::SubtractRequest { a, b } => {
+                  CalculatorProtocol::SubtractResponse { result: a - b }
+                }
+                _ => continue, // Ignore responses
+            };
+            sender.send(response).await.ok();
+        }
+    });
+
+    // Client side
+    let mut client_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    client_endpoint.register_bidirectional("Calculator", 1).await?;
+    client_endpoint.connect("127.0.0.1:8080").await?;
+
+    let (sender, mut receiver) = client_endpoint.get_channels::<CalculatorProtocol>().await?;
+
+    // Make request manually
+    sender.send(CalculatorProtocol::AddRequest { a: 5, b: 3 }).await?;
+
+    // Wait for response
+    if let Some(CalculatorProtocol::AddResponse { result }) = receiver.recv().await {
+        println!("5 + 3 = {}", result);
     }
-});
-
-// Client side
-let mut client_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-client_endpoint.register_bidirectional("Calculator", 1).await?;
-client_endpoint.connect("127.0.0.1:8080").await?;
-
-let (sender, mut receiver) = client_endpoint.get_channels::<CalculatorProtocol>().await?;
-
-// Make request manually
-sender.send(CalculatorProtocol::AddRequest { a: 5, b: 3 }).await?;
-
-// Wait for response
-if let Some(CalculatorProtocol::AddResponse { result }) = receiver.recv().await {
-    println!("5 + 3 = {}", result);
+    Ok(())
 }
-# Ok(())
-# }
 ```
 
 ### Example Guide
 
-- `hello_world.rs` - Basic BDRPC concepts and full stack overview
-- `channel_basics.rs` - In-memory channels only
-- `advanced_channels.rs` - In-memory channel management
-- `dynamic_channels.rs` - **System protocol and dynamic channel creation** ⭐
-- `chat_server.rs` - In-memory multi-client pattern
-- `calculator.rs` - TCP transport + in-memory channels (demo)
-- `network_chat.rs` - **Full Endpoint API with network channels** ⭐
+BDRPC provides examples in two forms to demonstrate different approaches:
 
-For production use, always use the Endpoint API as shown in `network_chat.rs`.
+#### 🎯 Getting Started Examples
+
+| Example                    | Description                                  | Key Concepts                                           |
+|----------------------------|----------------------------------------------|--------------------------------------------------------|
+| **hello_world_service.rs** | Simplest RPC using `#[bdrpc::service]` macro | Service traits, generated client/server, type-safe RPC |
+| **hello_world_manual.rs**  | Same functionality with manual protocol      | Protocol enum, manual routing, full control            |
+| **channel_basics.rs**      | In-memory channel fundamentals               | Channel creation, send/recv, FIFO ordering             |
+
+#### 🧮 RPC Pattern Examples
+
+| Example           | Service Macro Version                                                                | Manual Protocol Version                                                     |
+|-------------------|--------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| **Calculator**    | `calculator_service.rs` - Type-safe math operations with generated client/dispatcher | `calculator_manual.rs` - Manual protocol enum with match-based routing      |
+| **Chat Server**   | `chat_server_service.rs` - Multi-client chat with generated service API              | `chat_server_manual.rs` - Manual message broadcasting and client management |
+| **File Transfer** | `file_transfer_service.rs` - Streaming large files with progress tracking            | `file_transfer_manual.rs` - Manual chunked transfer with CRC32 verification |
+
+#### 🌐 Advanced Patterns
+
+| Example                           | Description                                | Key Features                                                               |
+|-----------------------------------|--------------------------------------------|----------------------------------------------------------------------------|
+| **dynamic_channels_service.rs** ⭐ | Multiplexing gateway with service macro    | System protocol, dynamic channel creation, type-safe multi-service gateway |
+| **dynamic_channels_manual.rs**    | Same gateway pattern with manual protocols | Full control over channel lifecycle, custom routing logic                  |
+| **network_chat.rs** ⭐             | Real network communication pattern         | Endpoint API, TCP transport, protocol negotiation                          |
+| **advanced_channels.rs**          | Channel management techniques              | Channel lifecycle, error handling, cleanup                                 |
+| **service_macro_demo.rs**         | Detailed macro explanation                 | Code generation, dispatcher internals, best practices                      |
+
+#### 📊 Choosing Your Approach
+
+**Use Service Macro (`#[bdrpc::service]`) when:**
+
+- ✅ Building standard RPC services
+- ✅ Want type-safe client APIs
+- ✅ Prefer less boilerplate code
+- ✅ Need automatic request routing
+- ✅ Value compile-time checking
+
+**Use Manual Protocol when:**
+
+- ✅ Need custom message structures
+- ✅ Require non-standard communication patterns
+- ✅ Want maximum control over protocol details
+- ✅ Integrating with existing protocol definitions
+- ✅ Building specialized streaming patterns
+
+#### 🚀 Running Examples
+
+```bash
+# Service macro examples (recommended for most use cases)
+cargo run --example hello_world_service --features serde
+cargo run --example calculator_service --features serde
+cargo run --example chat_server_service --features serde
+cargo run --example file_transfer_service --features serde
+cargo run --example dynamic_channels_service --features serde
+
+# Manual protocol examples (for learning or custom patterns)
+cargo run --example hello_world_manual --features serde
+cargo run --example calculator_manual --features serde
+cargo run --example chat_server_manual --features serde
+cargo run --example file_transfer_manual --features serde
+cargo run --example dynamic_channels_manual --features serde
+
+# Network communication (production pattern)
+cargo run --example network_chat --features serde
+```
+
+#### 💡 Example Comparison
+
+Each paired example (service vs manual) demonstrates the **same functionality** using different approaches:
+
+| Aspect             | Service Macro        | Manual Protocol  |
+|--------------------|----------------------|------------------|
+| **Code Volume**    | ~200 lines           | ~400 lines       |
+| **Type Safety**    | Compile-time checked | Runtime matching |
+| **Boilerplate**    | Minimal (generated)  | More (explicit)  |
+| **Flexibility**    | Structured patterns  | Maximum control  |
+| **Learning Curve** | Easier to start      | Shows internals  |
+| **Best For**       | Production services  | Custom protocols |
+
+**For production use**, always use the Endpoint API as shown in `network_chat.rs` for proper network communication.
 
 ## Project Structure
 
@@ -239,7 +318,6 @@ bdrpc/
 +-- bdrpc-macros/              # Procedural macros for code generation
 +-- docs/                      # Documentation
     +-- adr/                   # Architecture Decision Records
-    +-- dev/                   # Development documentation
 ```
 
 ## Documentation
@@ -251,15 +329,15 @@ bdrpc/
 - **[Protocol Evolution](docs/protocol-evolution.md)** - Versioning and compatibility
 - **[Error Recovery](docs/error-recovery.md)** - Error handling patterns
 - **[ADRs](docs/adr/)** - Architecture Decision Records
-- **[Post-v0.1.0 Roadmap](docs/dev/post-v0.1.0-roadmap.md)** - Future features and enhancements
-- **[v0.1.0 Implementation Plan](docs/dev/archive/implementation-plan-v0.1.0.md)** - Archived v0.1.0 planning (90% complete)
 - **[API Documentation](https://huhlig.github.io/bdrpc/)** - Full API reference
 
 ## Project Status
 
-BDRPC v0.1.0 has been released! See the [post-v0.1.0 roadmap](docs/dev/post-v0.1.0-roadmap.md) for future features and enhancements.
+BDRPC v0.1.0 has been released! See the [post-v0.1.0 roadmap](docs/dev/post-v0.1.0-roadmap.md) for future features and
+enhancements.
 
 **Completed Features:**
+
 - ✅ Core channel and transport abstractions
 - ✅ Multiple serialization formats (JSON, Postcard, rkyv)
 - ✅ TCP and TLS transports
@@ -274,26 +352,8 @@ BDRPC v0.1.0 has been released! See the [post-v0.1.0 roadmap](docs/dev/post-v0.1
 - ✅ 367 tests passing with 83% code coverage
 
 **Planned for v0.2.0:**
+
 - 🔜 WebSocket transport
 - 🔜 QUIC transport
+- 🔜 RKYV Serialization
 - 🔜 Enhanced fuzz and stress testing
-
-### Transport Layer Enhancements
-
-#### 1. WebSocket Transport
-- [ ] **Add WebSocket transport implementation**
-  - Location: New file `bdrpc/src/transport/websocket.rs`
-  - Description: Implement WebSocket transport for browser compatibility
-  - Priority: Medium
-  - Estimated effort: Large
-  - Dependencies: Add `tokio-tungstenite` crate to Cargo.toml
-  - Notes: Essential for web-based applications
-
-#### 2. WebTransport over QUIC
-- [ ] **Add WebTransport over QUIC support**
-  - Location: New file `bdrpc/src/transport/webtransport.rs`
-  - Description: Implement WebTransport protocol for modern web applications
-  - Priority: Low
-  - Estimated effort: Large
-  - Dependencies: Add appropriate QUIC/WebTransport crate
-  - Notes: Cutting-edge transport with multiplexing and low latency

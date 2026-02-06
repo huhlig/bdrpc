@@ -17,8 +17,8 @@
 //! # Calculator Service Example - Using #[bdrpc::service]
 //!
 //! This example demonstrates the calculator RPC pattern using the `#[bdrpc::service]` macro.
-//! Compare this with `calculator.rs` to see the difference between manual protocol implementation
-//! and using the service macro.
+//! Compare this with `calculator_manual.rs` to see the difference between manual protocol
+//! implementation and using the service macro.
 //!
 //! ## What This Example Shows
 //!
@@ -291,8 +291,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   • Clean API: Client methods match service methods");
     println!("   • Built-in error handling: Result types for errors");
 
-    println!("\n🔍 Compare with calculator.rs:");
-    println!("   • calculator.rs: Manual protocol enum and matching");
+    println!("\n🔍 Compare with calculator_manual:");
+    println!("   • calculator_manual: Manual protocol enum and matching");
     println!("   • calculator_service.rs: Generated code via macro");
     println!("   • Both achieve the same functionality");
     println!("   • Service macro reduces boilerplate significantly");

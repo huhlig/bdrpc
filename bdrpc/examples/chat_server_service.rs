@@ -17,8 +17,8 @@
 //! # Chat Server Service Example - Using #[bdrpc::service]
 //!
 //! This example demonstrates a multi-client chat server using the `#[bdrpc::service]` macro.
-//! Compare this with `chat_server.rs` to see the difference between manual protocol implementation
-//! and using the service macro.
+//! Compare this with `chat_server_manual.rs` to see the difference between manual protocol
+//! implementation and using the service macro.
 //!
 //! ## What This Example Shows
 //!
@@ -362,8 +362,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   • Less boilerplate code");
     println!("   • Self-documenting service interface");
 
-    println!("\n🔍 Compare with chat_server.rs:");
-    println!("   • chat_server.rs: Manual ChatProtocol enum");
+    println!("\n🔍 Compare with chat_server_manual:");
+    println!("   • chat_server_manual: Manual ChatProtocol enum");
     println!("   • chat_server_service.rs: Generated via macro");
     println!("   • Service macro provides cleaner API");
 

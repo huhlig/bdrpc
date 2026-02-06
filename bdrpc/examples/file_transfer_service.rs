@@ -17,7 +17,7 @@
 //! # File Transfer Service Example - Using #[bdrpc::service]
 //!
 //! This example demonstrates streaming large files using the `#[bdrpc::service]` macro.
-//! Compare this with `file_transfer.rs` to see the difference between manual protocol
+//! Compare this with `file_transfer_manual` to see the difference between manual protocol
 //! implementation and using the service macro.
 //!
 //! ## What This Example Shows
@@ -441,8 +441,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   • Less boilerplate code");
     println!("   • Self-documenting service interface");
 
-    println!("\n🔍 Compare with file_transfer.rs:");
-    println!("   • file_transfer.rs: Manual FileTransferProtocol enum");
+    println!("\n🔍 Compare with file_transfer_manual:");
+    println!("   • file_transfer_manual: Manual FileTransferProtocol enum");
     println!("   • file_transfer_service.rs: Generated via macro");
     println!("   • Service macro provides cleaner streaming API");
 

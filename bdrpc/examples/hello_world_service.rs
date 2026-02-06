@@ -17,8 +17,8 @@
 //! # Hello World Service Example - Using #[bdrpc::service]
 //!
 //! This example demonstrates the simplest possible RPC service using the `#[bdrpc::service]` macro.
-//! Compare this with `hello_world.rs` to see the difference between manual protocol implementation
-//! and using the service macro.
+//! Compare this with `hello_world_manual.rs` to see the difference between manual protocol
+//! implementation and using the service macro.
 //!
 //! ## What This Example Shows
 //!
@@ -162,8 +162,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   • Clean separation of client and server code");
     println!("   • No manual protocol enum or matching logic");
 
-    println!("\n🔍 Compare with hello_world.rs:");
-    println!("   • hello_world.rs: Manual GreetingProtocol enum");
+    println!("\n🔍 Compare with hello_world_manual:");
+    println!("   • hello_world_manual: Manual GreetingProtocol enum");
     println!("   • hello_world_service.rs: Generated via macro");
     println!("   • Service macro is simpler and more maintainable");
 
