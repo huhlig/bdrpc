@@ -237,6 +237,7 @@ impl Default for CompressionConfig {
 }
 
 /// Internal enum to hold the actual decompression stream types for reading.
+#[allow(clippy::enum_variant_names)]
 enum ReadStream<R> {
     GzipDecoder(GzipReadDecoder<BufReader<R>>),
     ZstdDecoder(ZstdReadDecoder<BufReader<R>>),
@@ -244,6 +245,7 @@ enum ReadStream<R> {
 }
 
 /// Internal enum to hold the actual compression stream types for writing.
+#[allow(clippy::enum_variant_names)]
 enum WriteStream<W> {
     GzipEncoder(GzipWriteEncoder<W>),
     ZstdEncoder(ZstdWriteEncoder<W>),

@@ -82,7 +82,7 @@ impl<P: Protocol> Channel<P> {
     /// * `id` - The unique identifier for this channel
     /// * `buffer_size` - The size of the internal message buffer
     /// * `backpressure` - The backpressure strategy to use
-    /// * `negotiated_features` - Features that were negotiated during handshake
+    /// * `negotiated_features` - Features that were negotiated during the handshake
     #[must_use]
     pub fn with_backpressure_and_features(
         id: ChannelId,
@@ -715,7 +715,7 @@ impl<P: Protocol> ChannelReceiver<P> {
 
         let envelope = tokio::select! {
             result = self.receiver.recv() => {
-                result.ok_or_else(|| {
+                result.ok_or({
                     #[cfg(feature = "observability")]
                     debug!("Channel closed, no more messages");
 

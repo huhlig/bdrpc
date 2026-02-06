@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_is_application_error() {
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         assert!(!error.is_transport_error());
         assert!(!error.is_channel_error());
@@ -384,7 +384,7 @@ mod tests {
         assert!(!channel_closed.is_recoverable());
 
         // Application errors are not recoverable at framework level
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         assert!(!error.is_recoverable());
     }
@@ -405,7 +405,7 @@ mod tests {
         assert!(!error.should_close_transport());
 
         // Application errors should not close transport
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         assert!(!error.should_close_transport());
     }
@@ -430,7 +430,7 @@ mod tests {
         assert!(!error.should_close_channel());
 
         // Application errors don't close channels
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         assert!(!error.should_close_channel());
     }
@@ -461,7 +461,7 @@ mod tests {
         });
         assert!(error.to_string().contains("channel error"));
 
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         assert!(error.to_string().contains("application error"));
     }
@@ -476,7 +476,7 @@ mod tests {
         });
         assert!(error.source().is_some());
 
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         assert!(error.source().is_some());
     }

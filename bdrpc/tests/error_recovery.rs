@@ -48,7 +48,7 @@ fn test_channel_error_identification() {
 /// Test that application errors are identified correctly.
 #[test]
 fn test_application_error_identification() {
-    let app_error = io::Error::new(io::ErrorKind::Other, "test");
+    let app_error = io::Error::other("test");
     let error = BdrpcError::Application(Box::new(app_error));
     assert!(!error.is_transport_error());
     assert!(!error.is_channel_error());
@@ -149,7 +149,7 @@ fn test_channel_full_error_is_recoverable() {
 #[test]
 fn test_application_error_propagation() {
     // Create an application error
-    let app_error = io::Error::new(io::ErrorKind::Other, "custom application error");
+    let app_error = io::Error::other("custom application error");
     let bdrpc_error = BdrpcError::Application(Box::new(app_error));
 
     // Verify it's an application error
@@ -220,7 +220,7 @@ fn test_error_display() {
     assert!(display.contains("channel error"));
 
     // Application error
-    let app_error = io::Error::new(io::ErrorKind::Other, "test");
+    let app_error = io::Error::other("test");
     let error = BdrpcError::Application(Box::new(app_error));
     let display = format!("{}", error);
     assert!(display.contains("application error"));
@@ -429,7 +429,7 @@ fn test_channel_error_decision_tree() {
 #[test]
 fn test_application_error_decision_tree() {
     // Application errors → Not recoverable, don't close anything
-    let app_error = io::Error::new(io::ErrorKind::Other, "custom error");
+    let app_error = io::Error::other("custom error");
     let bdrpc_err = BdrpcError::Application(Box::new(app_error));
 
     assert!(!bdrpc_err.is_recoverable());

@@ -153,8 +153,10 @@ async fn test_abrupt_connection_drop() {
 #[tokio::test]
 async fn test_channel_creation_timeout() {
     let serializer = JsonSerializer::default();
-    let mut config = EndpointConfig::default();
-    config.handshake_timeout = Duration::from_millis(200);
+    let config = EndpointConfig {
+        handshake_timeout: Duration::from_millis(200),
+        ..Default::default()
+    };
 
     // Start server that accepts but never completes handshake
     let listener = TcpTransport::bind("127.0.0.1:0")
@@ -250,9 +252,12 @@ async fn test_concurrent_connection_failures() {
         let addr = format!("127.0.0.1:{}", port);
         let handle = tokio::spawn(async move {
             let serializer = JsonSerializer::default();
-            let mut config = EndpointConfig::default();
-            // Set shorter timeout to speed up test
-            config.handshake_timeout = Duration::from_millis(100);
+            let config = EndpointConfig {
+                // Set a shorter timeout to speed up the test
+                handshake_timeout: Duration::from_millis(100),
+                ..Default::default()
+            };
+
             let mut ep = Endpoint::new(serializer, config);
             ep.register_caller("test.network_failure", 1)
                 .await
@@ -385,8 +390,10 @@ async fn test_connection_cleanup_after_failure() {
 #[tokio::test]
 async fn test_slow_network_handling() {
     let serializer = JsonSerializer::default();
-    let mut config = EndpointConfig::default();
-    config.handshake_timeout = Duration::from_millis(200);
+    let config = EndpointConfig {
+        handshake_timeout: Duration::from_millis(200),
+        ..Default::default()
+    };
 
     // Start server with artificial delay
     let listener = TcpTransport::bind("127.0.0.1:0")

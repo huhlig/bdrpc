@@ -211,18 +211,21 @@ async fn run_client(username: &str) -> Result<(), Box<dyn Error>> {
     println!("🌐 Step 3: Connecting to server");
     let addr = "127.0.0.1:9091";
     println!("   Connecting to {}", addr);
-    
+
     let connection = endpoint.connect(addr).await?;
-    println!("   ✅ Connected to server (connection: {})\n", connection.id());
+    println!(
+        "   ✅ Connected to server (connection: {})\n",
+        connection.id()
+    );
 
     // Step 4: Create typed channels using the new convenience method
     println!("📺 Step 4: Creating typed channels");
     println!("   Using get_channels() convenience method...");
-    
+
     let (sender, mut receiver) = endpoint
         .get_channels::<ChatProtocol>(connection.id(), "ChatProtocol")
         .await?;
-    
+
     println!("   ✅ Channels created successfully\n");
 
     // Step 5: Send join message

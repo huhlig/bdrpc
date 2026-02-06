@@ -35,7 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .await?;
     println!("   Created client endpoint: {}", client.id());
-    println!("   Registered protocols: {:?}", client.capabilities().await.len());
+    println!(
+        "   Registered protocols: {:?}",
+        client.capabilities().await.len()
+    );
     println!();
 
     // Example 2: Server with preset configuration
@@ -120,7 +123,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_caller("OrderService", 1)
         .build()
         .await?;
-    println!("   Created client with custom buffer: {}", client_custom.id());
+    println!(
+        "   Created client with custom buffer: {}",
+        client_custom.id()
+    );
     println!();
 
     // Example 8: Comparison with manual approach

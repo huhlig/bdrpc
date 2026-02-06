@@ -156,7 +156,7 @@ async fn test_rapid_channel_creation_and_removal() {
         );
 
         // Remove channel
-        manager.remove_channel(channel_id).await;
+        manager.remove_channel(channel_id).await.unwrap();
 
         // Verify it's gone
         let _ = manager.remove_channel(channel_id).await;

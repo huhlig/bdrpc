@@ -270,7 +270,10 @@ impl fmt::Display for EndpointError {
                 write!(
                     f,
                     "failed to create channel for protocol '{}' on connection '{}' (channel ID: {}): {}. Hint: check that the protocol is registered and the connection is active",
-                    protocol, connection_id, channel_id.as_u64(), reason
+                    protocol,
+                    connection_id,
+                    channel_id.as_u64(),
+                    reason
                 )
             }
             Self::ChannelRequestTimeout {
@@ -282,7 +285,10 @@ impl fmt::Display for EndpointError {
                 write!(
                     f,
                     "channel request for protocol '{}' on connection '{}' (channel ID: {}) timed out after {} seconds. Hint: check network connectivity and ensure the peer is responding",
-                    protocol, connection_id, channel_id.as_u64(), timeout_secs
+                    protocol,
+                    connection_id,
+                    channel_id.as_u64(),
+                    timeout_secs
                 )
             }
             Self::ChannelRequestRejected {
@@ -294,7 +300,10 @@ impl fmt::Display for EndpointError {
                 write!(
                     f,
                     "channel request for protocol '{}' on connection '{}' (channel ID: {}) was rejected by peer: {}. Hint: ensure the protocol is allowed by the peer's negotiator",
-                    protocol, connection_id, channel_id.as_u64(), reason
+                    protocol,
+                    connection_id,
+                    channel_id.as_u64(),
+                    reason
                 )
             }
         }
@@ -339,7 +348,10 @@ mod tests {
         let err = EndpointError::ProtocolNotRegistered {
             protocol: "TestProtocol".to_string(),
         };
-        assert!(err.to_string().contains("protocol 'TestProtocol' is not registered"));
+        assert!(
+            err.to_string()
+                .contains("protocol 'TestProtocol' is not registered")
+        );
         assert!(err.to_string().contains("Hint:"));
 
         let err = EndpointError::DirectionNotSupported {
@@ -347,7 +359,10 @@ mod tests {
             operation: "call".to_string(),
             our_direction: ProtocolDirection::RespondOnly,
         };
-        assert!(err.to_string().contains("cannot call protocol 'TestProtocol'"));
+        assert!(
+            err.to_string()
+                .contains("cannot call protocol 'TestProtocol'")
+        );
         assert!(err.to_string().contains("respond only only"));
         assert!(err.to_string().contains("Hint:"));
 
@@ -356,8 +371,14 @@ mod tests {
             our_direction: ProtocolDirection::CallOnly,
             peer_direction: ProtocolDirection::CallOnly,
         };
-        assert!(err.to_string().contains("incompatible directions for protocol 'TestProtocol'"));
-        assert!(err.to_string().contains("we are call only, peer is call only"));
+        assert!(
+            err.to_string()
+                .contains("incompatible directions for protocol 'TestProtocol'")
+        );
+        assert!(
+            err.to_string()
+                .contains("we are call only, peer is call only")
+        );
         assert!(err.to_string().contains("Hint:"));
 
         let err = EndpointError::NoCommonVersion {
@@ -365,8 +386,14 @@ mod tests {
             our_versions: vec![1, 2],
             peer_versions: vec![3, 4],
         };
-        assert!(err.to_string().contains("no common version for protocol 'TestProtocol'"));
-        assert!(err.to_string().contains("we support [1, 2], peer supports [3, 4]"));
+        assert!(
+            err.to_string()
+                .contains("no common version for protocol 'TestProtocol'")
+        );
+        assert!(
+            err.to_string()
+                .contains("we support [1, 2], peer supports [3, 4]")
+        );
         assert!(err.to_string().contains("Hint:"));
 
         let err = EndpointError::FeatureNotSupported {
@@ -421,7 +448,7 @@ mod tests {
 
     #[test]
     fn test_error_from_io() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "test error");
+        let io_err = std::io::Error::other("test error");
         let endpoint_err: EndpointError = io_err.into();
         assert!(matches!(endpoint_err, EndpointError::Io(_)));
     }

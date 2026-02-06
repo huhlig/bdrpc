@@ -923,7 +923,7 @@ mod tests {
     #[test]
     fn test_metrics_record_application_error() {
         let metrics = ErrorMetrics::new();
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         metrics.record_error(&error);
 
@@ -1138,7 +1138,7 @@ mod tracing_tests {
 
     #[test]
     fn test_log_application_error() {
-        let app_error = io::Error::new(io::ErrorKind::Other, "test");
+        let app_error = io::Error::other("test");
         let error = BdrpcError::Application(Box::new(app_error));
         log_error(&error);
     }

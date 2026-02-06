@@ -199,8 +199,8 @@ impl<S: Serializer> EndpointBuilder<S> {
     /// # }
     /// ```
     pub fn client(serializer: S) -> Self {
-        let config = EndpointConfig::new()
-            .with_endpoint_id(format!("client-{}", uuid::Uuid::new_v4()));
+        let config =
+            EndpointConfig::new().with_endpoint_id(format!("client-{}", uuid::Uuid::new_v4()));
         Self::with_config(serializer, config)
     }
 
@@ -413,13 +413,19 @@ impl<S: Serializer> EndpointBuilder<S> {
         for protocol in self.protocols {
             match protocol.direction {
                 ProtocolDirection::CallOnly => {
-                    endpoint.register_caller(protocol.name, protocol.version).await?;
+                    endpoint
+                        .register_caller(protocol.name, protocol.version)
+                        .await?;
                 }
                 ProtocolDirection::RespondOnly => {
-                    endpoint.register_responder(protocol.name, protocol.version).await?;
+                    endpoint
+                        .register_responder(protocol.name, protocol.version)
+                        .await?;
                 }
                 ProtocolDirection::Bidirectional => {
-                    endpoint.register_bidirectional(protocol.name, protocol.version).await?;
+                    endpoint
+                        .register_bidirectional(protocol.name, protocol.version)
+                        .await?;
                 }
             }
         }

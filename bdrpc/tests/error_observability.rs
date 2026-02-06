@@ -34,10 +34,7 @@ fn test_metrics_track_all_error_types() {
     metrics.record_error(&BdrpcError::Channel(ChannelError::Closed {
         channel_id: ChannelId::from(1),
     }));
-    metrics.record_error(&BdrpcError::Application(Box::new(io::Error::new(
-        io::ErrorKind::Other,
-        "test",
-    ))));
+    metrics.record_error(&BdrpcError::Application(Box::new(io::Error::other("test"))));
 
     // Verify counts
     assert_eq!(metrics.transport_errors(), 1);
@@ -160,10 +157,7 @@ fn test_observer_callback_receives_correct_error() {
     observer.notify(&BdrpcError::Channel(ChannelError::Closed {
         channel_id: ChannelId::from(1),
     }));
-    observer.notify(&BdrpcError::Application(Box::new(io::Error::new(
-        io::ErrorKind::Other,
-        "test",
-    ))));
+    observer.notify(&BdrpcError::Application(Box::new(io::Error::other("test"))));
 
     assert_eq!(transport_count.load(Ordering::Relaxed), 2);
     assert_eq!(channel_count.load(Ordering::Relaxed), 1);
@@ -191,7 +185,7 @@ fn test_combined_metrics_and_observer() {
         BdrpcError::Channel(ChannelError::Closed {
             channel_id: ChannelId::from(1),
         }),
-        BdrpcError::Application(Box::new(io::Error::new(io::ErrorKind::Other, "test"))),
+        BdrpcError::Application(Box::new(io::Error::other("test"))),
     ];
 
     for error in errors {
@@ -276,7 +270,7 @@ fn test_metrics_thread_safety() {
                         channel_id: ChannelId::from(i),
                     })
                 } else {
-                    BdrpcError::Application(Box::new(io::Error::new(io::ErrorKind::Other, "test")))
+                    BdrpcError::Application(Box::new(io::Error::other("test")))
                 };
                 metrics_clone.record_error(&error);
             }
@@ -289,7 +283,7 @@ fn test_metrics_thread_safety() {
         handle.join().unwrap();
     }
 
-    // Verify total count (10 threads * 100 errors each)
+    // Verify the total count (10 threads * 100 errors each)
     assert_eq!(metrics.total_errors(), 1000);
 }
 

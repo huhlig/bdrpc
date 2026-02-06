@@ -16,7 +16,7 @@
 
 //! Integration tests for protocol version negotiation edge cases.
 
-use bdrpc::endpoint::{negotiate_protocols, ProtocolCapability, ProtocolDirection};
+use bdrpc::endpoint::{ProtocolCapability, ProtocolDirection, negotiate_protocols};
 
 #[test]
 fn test_negotiate_single_common_version() {
@@ -306,10 +306,13 @@ fn test_negotiate_multiple_protocols_mixed_results() {
     assert!(service3.we_can_respond);
 }
 
-
 #[test]
 fn test_protocol_capability_version_support() {
-    let cap = ProtocolCapability::new("TestService", vec![1, 2, 3], ProtocolDirection::Bidirectional);
+    let cap = ProtocolCapability::new(
+        "TestService",
+        vec![1, 2, 3],
+        ProtocolDirection::Bidirectional,
+    );
 
     assert!(cap.supports_version(1));
     assert!(cap.supports_version(2));
@@ -417,9 +420,21 @@ fn test_direction_compatibility_matrix() {
             // Check if compatible
             let is_compatible = our_dir.is_compatible_with(peer_dir);
             if is_compatible {
-                assert_eq!(negotiated.len(), 1, "Should negotiate for {:?} + {:?}", our_dir, peer_dir);
+                assert_eq!(
+                    negotiated.len(),
+                    1,
+                    "Should negotiate for {:?} + {:?}",
+                    our_dir,
+                    peer_dir
+                );
             } else {
-                assert_eq!(negotiated.len(), 0, "Should not negotiate for {:?} + {:?}", our_dir, peer_dir);
+                assert_eq!(
+                    negotiated.len(),
+                    0,
+                    "Should not negotiate for {:?} + {:?}",
+                    our_dir,
+                    peer_dir
+                );
             }
         }
     }

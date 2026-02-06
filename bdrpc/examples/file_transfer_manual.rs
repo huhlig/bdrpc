@@ -218,7 +218,7 @@ async fn run_sender() -> Result<(), Box<dyn Error>> {
     println!("📦 Step 5: Sending file chunks");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    let total_chunks = (file_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    let total_chunks = file_size.div_ceil(CHUNK_SIZE);
     let start_time = Instant::now();
     let mut bytes_sent = 0u64;
 

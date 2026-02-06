@@ -104,7 +104,7 @@ mod tests {
         let circuit = CircuitBreaker::default();
         let no_reconnect = NoReconnect::new();
 
-        let names = vec![
+        let names = [
             exp.name(),
             fixed.name(),
             circuit.name(),

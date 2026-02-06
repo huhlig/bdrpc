@@ -50,21 +50,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // This blocks until a connection arrives, performs handshake,
         // and returns typed channels ready to use
         let (sender, mut receiver) = listener.accept_channels::<EchoProtocol>().await?;
-        
+
         println!("New connection accepted!");
 
         // Spawn a task to handle this connection
         tokio::spawn(async move {
             let mut message_count = 0;
-            
+
             // Echo messages back to the client
             while let Some(msg) = receiver.recv().await {
                 message_count += 1;
-                
+
                 match &msg {
                     EchoProtocol::Echo(text) => {
                         println!("Received message #{}: {}", message_count, text);
-                        
+
                         // Echo it back
                         if let Err(e) = sender.send(msg).await {
                             eprintln!("Failed to send echo: {}", e);
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            
+
             println!("Connection closed after {} messages", message_count);
         });
     }

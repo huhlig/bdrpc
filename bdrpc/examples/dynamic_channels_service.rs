@@ -420,7 +420,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let auth_client = AuthClient::new(client_to_server_sender.clone(), server_to_client_receiver);
 
     println!("   📤 Client → Gateway: login('alice', '******')");
-    match auth_client.login("alice".to_string(), "secret".to_string()).await {
+    match auth_client
+        .login("alice".to_string(), "secret".to_string())
+        .await
+    {
         Ok(Ok(token)) => {
             println!("   📥 Gateway → Client: LoginResponse(token='{}')", token);
         }
@@ -480,7 +483,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     println!("Step 4: Create type-safe client and make RPC calls");
-    let data_client = DataClient::new(data_client_to_server_sender.clone(), data_server_to_client_receiver);
+    let data_client = DataClient::new(
+        data_client_to_server_sender.clone(),
+        data_server_to_client_receiver,
+    );
 
     println!("   📤 Client → Gateway: query('SELECT * FROM users')");
     match data_client.query("SELECT * FROM users".to_string()).await {
@@ -546,7 +552,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     println!("Step 4: Create type-safe client and make RPC calls");
-    let log_client = LogClient::new(log_client_to_server_sender.clone(), log_server_to_client_receiver);
+    let log_client = LogClient::new(
+        log_client_to_server_sender.clone(),
+        log_server_to_client_receiver,
+    );
 
     println!("   📤 Client → Gateway: log('INFO', 'User alice logged in')");
     match log_client

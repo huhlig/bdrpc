@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_serialization_error_with_source() {
-        let source = std::io::Error::new(std::io::ErrorKind::Other, "io error");
+        let source = std::io::Error::other("io error");
         let error = SerializationError::with_source("test error", source);
         assert!(error.to_string().contains("test error"));
         assert!(error.source().is_some());
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_deserialization_error_with_source() {
-        let source = std::io::Error::new(std::io::ErrorKind::Other, "io error");
+        let source = std::io::Error::other("io error");
         let error = DeserializationError::with_source("test error", source);
         assert!(error.to_string().contains("test error"));
         assert!(error.source().is_some());

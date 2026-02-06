@@ -530,7 +530,7 @@ impl ChannelNegotiator for DefaultChannelNegotiator {
     ) {
         // Automatically allow the protocol when it's registered
         self.allow_protocol(protocol_name).await;
-        
+
         #[cfg(feature = "tracing")]
         tracing::debug!(
             "Protocol '{}' automatically allowed after registration",

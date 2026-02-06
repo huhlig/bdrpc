@@ -325,24 +325,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Step 4: Client uses auth channel");
     let auth_sender_clone = auth_sender.clone();
     let auth_task = tokio::spawn(async move {
-        if let Some(msg) = auth_receiver.recv().await {
-            match msg {
-                AuthProtocol::Login { username, .. } => {
-                    println!(
-                        "   🔐 Gateway → Auth Service: Login request for '{}'",
-                        username
-                    );
-                    println!("   🔐 Auth Service → Gateway: Login successful");
-                    auth_sender_clone
-                        .send(AuthProtocol::LoginResponse {
-                            success: true,
-                            token: Some("token-abc123".to_string()),
-                        })
-                        .await
-                        .ok();
-                }
-                _ => {}
-            }
+        if let Some(AuthProtocol::Login { username, .. }) = auth_receiver.recv().await {
+            println!(
+                "   🔐 Gateway → Auth Service: Login request for '{}'",
+                username
+            );
+            println!("   🔐 Auth Service → Gateway: Login successful");
+            auth_sender_clone
+                .send(AuthProtocol::LoginResponse {
+                    success: true,
+                    token: Some("token-abc123".to_string()),
+                })
+                .await
+                .ok();
         }
     });
 
@@ -387,20 +382,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Step 3: Client uses data channel");
     let data_sender_clone = data_sender.clone();
     let data_task = tokio::spawn(async move {
-        if let Some(msg) = data_receiver.recv().await {
-            match msg {
-                DataProtocol::Query { sql } => {
-                    println!("   💾 Gateway → Data Service: Query '{}'", sql);
-                    println!("   💾 Data Service → Gateway: 2 rows returned");
-                    data_sender_clone
-                        .send(DataProtocol::QueryResponse {
-                            rows: vec!["row1".to_string(), "row2".to_string()],
-                        })
-                        .await
-                        .ok();
-                }
-                _ => {}
-            }
+        if let Some(DataProtocol::Query { sql }) = data_receiver.recv().await {
+            println!("   💾 Gateway → Data Service: Query '{}'", sql);
+            println!("   💾 Data Service → Gateway: 2 rows returned");
+            data_sender_clone
+                .send(DataProtocol::QueryResponse {
+                    rows: vec!["row1".to_string(), "row2".to_string()],
+                })
+                .await
+                .ok();
         }
     });
 
@@ -443,18 +433,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Step 3: Client uses logging channel");
     let log_sender_clone = log_sender.clone();
     let log_task = tokio::spawn(async move {
-        if let Some(msg) = log_receiver.recv().await {
-            match msg {
-                LogProtocol::Log { level, message } => {
-                    println!("   📝 Gateway → Log Service: [{}] {}", level, message);
-                    println!("   📝 Log Service → Gateway: Log recorded");
-                    log_sender_clone
-                        .send(LogProtocol::LogResponse { success: true })
-                        .await
-                        .ok();
-                }
-                _ => {}
-            }
+        if let Some(LogProtocol::Log { level, message }) = log_receiver.recv().await {
+            println!("   📝 Gateway → Log Service: [{}] {}", level, message);
+            println!("   📝 Log Service → Gateway: Log recorded");
+            log_sender_clone
+                .send(LogProtocol::LogResponse { success: true })
+                .await
+                .ok();
         }
     });
 

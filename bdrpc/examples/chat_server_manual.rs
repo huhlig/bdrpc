@@ -351,7 +351,7 @@ async fn run_client(
     // Send some test messages
     sleep(Duration::from_millis(500)).await;
 
-    let messages = vec![
+    let messages = [
         format!("Hello from {}!", username),
         format!("{} says hi to everyone!", username),
         format!("This is {}'s last message", username),

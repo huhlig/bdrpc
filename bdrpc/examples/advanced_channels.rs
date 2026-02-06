@@ -187,21 +187,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Spawn receiver task
     let notification_handler = tokio::spawn(async move {
-        if let Some(msg) = notification_receiver.recv().await {
-            match msg {
-                NotificationProtocol::Alert { level, message } => {
-                    println!("   Receiver: 🔔 Received alert [{}]: {}", level, message);
-                }
-                _ => {}
-            }
+        if let Some(NotificationProtocol::Alert { level, message }) =
+            notification_receiver.recv().await
+        {
+            println!("   Receiver: 🔔 Received alert [{}]: {}", level, message);
         }
-        if let Some(msg) = notification_receiver.recv().await {
-            match msg {
-                NotificationProtocol::StatusUpdate { status } => {
-                    println!("   Receiver: 📊 Received status update: {}", status);
-                }
-                _ => {}
-            }
+        if let Some(NotificationProtocol::StatusUpdate { status }) =
+            notification_receiver.recv().await
+        {
+            println!("   Receiver: 📊 Received status update: {}", status);
         }
     });
 
@@ -242,21 +236,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Spawn receiver task
     let command_handler = tokio::spawn(async move {
-        if let Some(msg) = command_receiver.recv().await {
-            match msg {
-                CommandProtocol::Execute { command } => {
-                    println!("   Receiver: ⚡ Executing command: {}", command);
-                }
-                _ => {}
-            }
+        if let Some(CommandProtocol::Execute { command }) = command_receiver.recv().await {
+            println!("   Receiver: ⚡ Executing command: {}", command);
         }
-        if let Some(msg) = command_receiver.recv().await {
-            match msg {
-                CommandProtocol::Shutdown => {
-                    println!("   Receiver: 🛑 Received shutdown command");
-                }
-                _ => {}
-            }
+        if let Some(CommandProtocol::Shutdown) = command_receiver.recv().await {
+            println!("   Receiver: 🛑 Received shutdown command");
         }
     });
 
@@ -317,13 +301,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         // Receive the ack
-        if let Some(msg) = chat_receiver.recv().await {
-            match msg {
-                ChatProtocol::Ack { message_id } => {
-                    println!("   Handler: ✅ Received ack for message {}", message_id);
-                }
-                _ => {}
-            }
+        if let Some(ChatProtocol::Ack { message_id }) = chat_receiver.recv().await {
+            println!("   Handler: ✅ Received ack for message {}", message_id);
         }
     });
 
@@ -375,13 +354,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         // Receive the result
-        if let Some(msg) = rpc_receiver.recv().await {
-            match msg {
-                RpcProtocol::Result { value } => {
-                    println!("   Handler: ✅ Received result: {}", value);
-                }
-                _ => {}
-            }
+        if let Some(RpcProtocol::Result { value }) = rpc_receiver.recv().await {
+            println!("   Handler: ✅ Received result: {}", value);
         }
     });
 

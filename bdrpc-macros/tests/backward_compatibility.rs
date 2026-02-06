@@ -13,7 +13,7 @@ mod v1 {
     #[allow(dead_code)]
     #[service(version = 1, min_version = 1)]
     pub trait UserService {
-        async fn get_user(&self, id: u64) -> String;
+        async fn get_user(&self, _id: u64) -> String;
     }
 }
 
@@ -24,7 +24,7 @@ mod v2 {
     #[allow(dead_code)]
     #[service(version = 2, min_version = 1)]
     pub trait UserService {
-        async fn get_user(&self, id: u64, include_details: Option<bool>) -> String;
+        async fn get_user(&self, _id: u64, _include_details: Option<bool>) -> String;
 
         async fn search_users(&self, query: String) -> Vec<String>;
     }
@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn test_v1_request_structure() {
         // V1 request should have only id field
-        let request = v1::UserServiceProtocol::GetUserRequest { id: 42 };
+        let request = v1::UserServiceProtocol::GetUserRequest { _id: 42 };
         assert_eq!(request.method_name(), "GetUserRequest");
         assert!(request.is_request());
         assert!(!request.is_response());
@@ -63,8 +63,8 @@ mod tests {
     fn test_v2_request_with_optional() {
         // V2 request can have optional field
         let request = v2::UserServiceProtocol::GetUserRequest {
-            id: 42,
-            include_details: Some(true),
+            _id: 42,
+            _include_details: Some(true),
         };
         assert_eq!(request.method_name(), "GetUserRequest");
         assert!(request.is_request());
@@ -74,8 +74,8 @@ mod tests {
     fn test_v2_request_without_optional() {
         // V2 request can omit optional field
         let request = v2::UserServiceProtocol::GetUserRequest {
-            id: 42,
-            include_details: None,
+            _id: 42,
+            _include_details: None,
         };
         assert_eq!(request.method_name(), "GetUserRequest");
         assert!(request.is_request());
@@ -110,20 +110,20 @@ mod tests {
         use serde_json;
 
         // Simulate V1 client sending to V2 server
-        // V1 sends: {"type": "GetUserRequest", "id": 42}
-        // V2 should deserialize with include_details = None (default)
+        // V1 sends: {"type": "GetUserRequest", "_id": 42}
+        // V2 should deserialize with _include_details = None (default)
 
-        let v1_json = r#"{"type":"GetUserRequest","id":42}"#;
+        let v1_json = r#"{"type":"GetUserRequest","_id":42}"#;
         let v2_request: Result<v2::UserServiceProtocol, _> = serde_json::from_str(v1_json);
 
         assert!(v2_request.is_ok());
         if let Ok(v2::UserServiceProtocol::GetUserRequest {
-            id,
-            include_details,
+            _id,
+            _include_details,
         }) = v2_request
         {
-            assert_eq!(id, 42);
-            assert_eq!(include_details, None); // Should default to None
+            assert_eq!(_id, 42);
+            assert_eq!(_include_details, None); // Should default to None
         } else {
             panic!("Failed to deserialize V1 message as V2");
         }
@@ -135,15 +135,15 @@ mod tests {
         use serde_json;
 
         // Simulate V2 client sending to V1 server
-        // V2 sends: {"type": "GetUserRequest", "id": 42, "include_details": true}
+        // V2 sends: {"type": "GetUserRequest", "_id": 42, "_include_details": true}
         // V1 should deserialize, ignoring the extra field
 
-        let v2_json = r#"{"type":"GetUserRequest","id":42,"include_details":true}"#;
+        let v2_json = r#"{"type":"GetUserRequest","_id":42,"_include_details":true}"#;
         let v1_request: Result<v1::UserServiceProtocol, _> = serde_json::from_str(v2_json);
 
         assert!(v1_request.is_ok());
-        if let Ok(v1::UserServiceProtocol::GetUserRequest { id }) = v1_request {
-            assert_eq!(id, 42);
+        if let Ok(v1::UserServiceProtocol::GetUserRequest { _id }) = v1_request {
+            assert_eq!(_id, 42);
         } else {
             panic!("Failed to deserialize V2 message as V1");
         }
@@ -192,9 +192,9 @@ mod advanced {
     #[allow(dead_code)]
     #[service(version = 2, min_version = 1, features("streaming", "compression"))]
     pub trait AdvancedService {
-        async fn basic_call(&self, data: String) -> String;
+        async fn basic_call(&self, _data: String) -> String;
 
-        async fn stream_data(&self, count: u32) -> Vec<u8>;
+        async fn stream_data(&self, _count: u32) -> Vec<u8>;
     }
 }
 
@@ -228,11 +228,11 @@ mod feature_tests {
     #[test]
     fn test_instance_feature_requirements() {
         let basic_request = advanced::AdvancedServiceProtocol::BasicCallRequest {
-            data: "test".to_string(),
+            _data: "test".to_string(),
         };
         assert_eq!(basic_request.required_features().len(), 0);
 
-        let stream_request = advanced::AdvancedServiceProtocol::StreamDataRequest { count: 10 };
+        let stream_request = advanced::AdvancedServiceProtocol::StreamDataRequest { _count: 10 };
         assert_eq!(stream_request.required_features().len(), 0);
     }
 }
@@ -244,10 +244,10 @@ mod deprecated {
     #[allow(dead_code)]
     #[service(version = 3, min_version = 1)]
     pub trait DeprecatedService {
-        async fn new_method(&self, id: u64) -> String;
+        async fn new_method(&self, _id: u64) -> String;
 
         #[deprecated]
-        async fn old_method(&self, id: u64) -> String;
+        async fn old_method(&self, _id: u64) -> String;
     }
 }
 
@@ -258,13 +258,13 @@ mod deprecation_tests {
     #[test]
     fn test_deprecated_method_exists() {
         // Just verify the deprecated method still exists and works
-        let request = deprecated::DeprecatedServiceProtocol::OldMethodRequest { id: 42 };
+        let request = deprecated::DeprecatedServiceProtocol::OldMethodRequest { _id: 42 };
         assert_eq!(request.method_name(), "OldMethodRequest");
     }
 
     #[test]
     fn test_non_deprecated_method() {
-        let request = deprecated::DeprecatedServiceProtocol::NewMethodRequest { id: 42 };
+        let request = deprecated::DeprecatedServiceProtocol::NewMethodRequest { _id: 42 };
         assert_eq!(request.method_name(), "NewMethodRequest");
     }
 }
