@@ -1,0 +1,11 @@
+[profile.test]
+fail-fast = false
+slow-timeout = "300s"
+
+[profile.ci]
+fail-fast = false
+slow-timeout = "60s"
+
+[profile.ci-extended]
+inherits = "ci"
+slow-timeout = "300s"

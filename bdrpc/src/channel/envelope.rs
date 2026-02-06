@@ -1,0 +1,222 @@
+//
+// Copyright 2026 Hans W. Uhlig. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+//! Message envelope for wrapping protocol messages with metadata.
+
+use super::ChannelId;
+
+/// An envelope that wraps a protocol message with metadata.
+///
+/// The envelope contains:
+/// - **Channel ID**: Routes the message to the correct channel
+/// - **Sequence number**: Ensures FIFO ordering within the channel
+/// - **Payload**: The actual protocol message
+///
+/// # Ordering Guarantees
+///
+/// Per ADR-007, messages within a channel are delivered in FIFO order.
+/// The sequence number is used to detect reordering bugs in debug builds.
+///
+/// # Example
+///
+/// ```rust
+/// use bdrpc::channel::{Envelope, ChannelId};
+///
+/// // Envelopes are typically created internally by the channel
+/// let envelope = Envelope {
+///     channel_id: ChannelId::from(1),
+///     sequence: 42,
+///     payload: "Hello".to_string(),
+/// };
+///
+/// assert_eq!(envelope.channel_id.as_u64(), 1);
+/// assert_eq!(envelope.sequence, 42);
+/// assert_eq!(envelope.payload, "Hello");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Envelope<P> {
+    /// The channel this message belongs to.
+    pub channel_id: ChannelId,
+
+    /// Sequence number for ordering within the channel.
+    ///
+    /// Sequence numbers start at 0 and increment for each message sent
+    /// on the channel. They are used to verify FIFO ordering.
+    pub sequence: u64,
+
+    /// The protocol message payload.
+    pub payload: P,
+}
+
+impl<P> Envelope<P> {
+    /// Creates a new envelope with the given channel ID, sequence number, and payload.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use bdrpc::channel::{Envelope, ChannelId};
+    ///
+    /// let envelope = Envelope::new(
+    ///     ChannelId::from(1),
+    ///     0,
+    ///     "message".to_string()
+    /// );
+    /// ```
+    #[must_use]
+    pub const fn new(channel_id: ChannelId, sequence: u64, payload: P) -> Self {
+        Self {
+            channel_id,
+            sequence,
+            payload,
+        }
+    }
+
+    /// Consumes the envelope and returns the payload.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use bdrpc::channel::{Envelope, ChannelId};
+    ///
+    /// let envelope = Envelope::new(
+    ///     ChannelId::from(1),
+    ///     0,
+    ///     "message".to_string()
+    /// );
+    /// let payload = envelope.into_payload();
+    /// assert_eq!(payload, "message");
+    /// ```
+    #[must_use]
+    pub fn into_payload(self) -> P {
+        self.payload
+    }
+
+    /// Returns a reference to the payload.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use bdrpc::channel::{Envelope, ChannelId};
+    ///
+    /// let envelope = Envelope::new(
+    ///     ChannelId::from(1),
+    ///     0,
+    ///     "message".to_string()
+    /// );
+    /// assert_eq!(envelope.payload(), "message");
+    /// ```
+    #[must_use]
+    pub const fn payload(&self) -> &P {
+        &self.payload
+    }
+
+    /// Returns a mutable reference to the payload.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use bdrpc::channel::{Envelope, ChannelId};
+    ///
+    /// let mut envelope = Envelope::new(
+    ///     ChannelId::from(1),
+    ///     0,
+    ///     "message".to_string()
+    /// );
+    /// envelope.payload_mut().push_str(" world");
+    /// assert_eq!(envelope.payload(), "message world");
+    /// ```
+    #[must_use]
+    pub fn payload_mut(&mut self) -> &mut P {
+        &mut self.payload
+    }
+
+    /// Maps the payload to a different type using the provided function.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use bdrpc::channel::{Envelope, ChannelId};
+    ///
+    /// let envelope = Envelope::new(
+    ///     ChannelId::from(1),
+    ///     0,
+    ///     "42".to_string()
+    /// );
+    /// let mapped = envelope.map(|s| s.parse::<i32>().unwrap());
+    /// assert_eq!(mapped.payload(), &42);
+    /// ```
+    #[must_use]
+    pub fn map<U, F>(self, f: F) -> Envelope<U>
+    where
+        F: FnOnce(P) -> U,
+    {
+        Envelope {
+            channel_id: self.channel_id,
+            sequence: self.sequence,
+            payload: f(self.payload),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_envelope_creation() {
+        let envelope = Envelope::new(ChannelId::from(1), 42, "test".to_string());
+        assert_eq!(envelope.channel_id.as_u64(), 1);
+        assert_eq!(envelope.sequence, 42);
+        assert_eq!(envelope.payload, "test");
+    }
+
+    #[test]
+    fn test_envelope_into_payload() {
+        let envelope = Envelope::new(ChannelId::from(1), 0, "test".to_string());
+        let payload = envelope.into_payload();
+        assert_eq!(payload, "test");
+    }
+
+    #[test]
+    fn test_envelope_payload_ref() {
+        let envelope = Envelope::new(ChannelId::from(1), 0, "test".to_string());
+        assert_eq!(envelope.payload(), "test");
+    }
+
+    #[test]
+    fn test_envelope_payload_mut() {
+        let mut envelope = Envelope::new(ChannelId::from(1), 0, "test".to_string());
+        envelope.payload_mut().push_str(" world");
+        assert_eq!(envelope.payload(), "test world");
+    }
+
+    #[test]
+    fn test_envelope_map() {
+        let envelope = Envelope::new(ChannelId::from(1), 0, "42".to_string());
+        let mapped = envelope.map(|s| s.parse::<i32>().unwrap());
+        assert_eq!(mapped.channel_id.as_u64(), 1);
+        assert_eq!(mapped.sequence, 0);
+        assert_eq!(mapped.payload, 42);
+    }
+
+    #[test]
+    fn test_envelope_clone() {
+        let envelope = Envelope::new(ChannelId::from(1), 0, "test".to_string());
+        let cloned = envelope.clone();
+        assert_eq!(envelope, cloned);
+    }
+}

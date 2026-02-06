@@ -1,0 +1,31 @@
+[package]
+name = "bdrpc-macros"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Procedural macros for the bdrpc framework"
+documentation = "https://docs.rs/bdrpc-macros"
+readme = "../README.md"
+keywords = ["rpc", "async", "macros", "codegen"]
+categories = ["network-programming", "asynchronous"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# Proc macro dependencies
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+
+[dev-dependencies]
+# For testing macro expansion
+trybuild = "1.0"
+bdrpc = { path = "../bdrpc" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+async-trait = { workspace = true }

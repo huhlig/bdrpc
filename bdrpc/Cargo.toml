@@ -1,0 +1,85 @@
+[package]
+name = "bdrpc"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "A bi-directional RPC framework for Rust with pluggable transports and serialization"
+documentation = "https://docs.rs/bdrpc"
+readme = "../README.md"
+keywords = ["rpc", "async", "networking", "bidirectional", "protocol"]
+categories = ["network-programming", "asynchronous"]
+
+[dependencies]
+# Async runtime
+tokio.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Proc macros (optional)
+bdrpc-macros = { path = "../bdrpc-macros", version = "0.1.0", optional = true }
+
+# Serialization (optional)
+serde = { workspace = true, optional = true }
+postcard = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+rkyv = { workspace = true, optional = true }
+
+# Tracing and metrics (optional)
+tracing = { workspace = true, optional = true }
+metrics = { workspace = true, optional = true }
+
+# Async trait support
+async-trait = "0.1"
+
+# UUID generation
+uuid = { version = "1.11", features = ["v4"] }
+
+# Random number generation (for reconnection jitter)
+rand = "0.8"
+
+# Synchronization primitives
+parking_lot = "0.12"
+
+# TLS support (optional)
+tokio-rustls = { version = "0.26", optional = true }
+rustls = { version = "0.23", optional = true }
+rustls-pemfile = { version = "2.1", optional = true }
+rustls-native-certs = { version = "0.7", optional = true }
+
+# Compression support (optional)
+flate2 = { version = "1.0", optional = true }
+async-compression = { version = "0.4", features = ["tokio", "gzip", "zstd", "lz4"], optional = true }
+
+[dev-dependencies]
+# Testing
+tokio-test = "0.4"
+criterion = { version = "0.5", features = ["async_tokio"] }
+proptest = "1.5"
+
+[features]
+default = ["serde", "derive"]
+derive = ["dep:bdrpc-macros"]
+serde = ["dep:serde", "postcard", "json"]
+postcard = ["dep:postcard", "dep:serde"]
+json = ["dep:serde_json", "dep:serde"]
+rkyv = ["dep:rkyv"]
+observability = ["tracing", "metrics"]
+tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile", "dep:rustls-native-certs"]
+compression = ["dep:flate2", "dep:async-compression"]
+full = ["serde", "rkyv", "observability", "tls", "compression"]
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[[bench]]
+name = "latency"
+
+[[example]]
+name = "file_transfer_service_async"
+required-features = ["serde"]
+harness = false
