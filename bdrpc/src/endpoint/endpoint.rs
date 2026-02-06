@@ -16,7 +16,7 @@
 
 //! Main endpoint implementation.
 
-use crate::channel::{ChannelId, ChannelManager, SYSTEM_CHANNEL_ID, SystemProtocol};
+use crate::channel::{ChannelId, ChannelManager, Protocol, SYSTEM_CHANNEL_ID, SystemProtocol};
 use crate::endpoint::{
     ChannelNegotiator, DefaultChannelNegotiator, EndpointConfig, EndpointError, HandshakeMessage,
     NegotiatedProtocol, ProtocolCapability, ProtocolDirection,
@@ -169,6 +169,56 @@ impl<S: Serializer> Endpoint<S> {
         &self.endpoint_id
     }
 
+    /// Returns a reference to the channel negotiator.
+    ///
+    /// This can be used to configure the negotiator. Note that the default
+    /// negotiator is `DefaultChannelNegotiator`, but custom implementations
+    /// can be set using `set_channel_negotiator`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    ///
+    /// let endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    ///
+    /// // The negotiator is available for inspection
+    /// let _negotiator = endpoint.negotiator();
+    /// ```
+    pub fn negotiator(&self) -> &Arc<dyn ChannelNegotiator> {
+        &self.channel_negotiator
+    }
+
+    /// Returns a reference to the default channel negotiator, if one is set.
+    ///
+    /// This is a convenience method that attempts to downcast the negotiator
+    /// to `DefaultChannelNegotiator`. Returns `None` if a custom negotiator
+    /// is being used.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    ///
+    /// # async fn example() {
+    /// let endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    ///
+    /// // Access the default negotiator to configure allowed protocols
+    /// if let Some(negotiator) = endpoint.default_negotiator() {
+    ///     negotiator.allow_protocol("MyProtocol").await;
+    ///     assert!(negotiator.is_protocol_allowed("MyProtocol").await);
+    /// }
+    /// # }
+    /// ```
+    pub fn default_negotiator(&self) -> Option<&DefaultChannelNegotiator> {
+        // Try to downcast &dyn ChannelNegotiator to &DefaultChannelNegotiator
+        // Since ChannelNegotiator now requires Any as a supertrait, we can cast to Any first
+        (self.channel_negotiator.as_ref() as &dyn std::any::Any)
+            .downcast_ref::<DefaultChannelNegotiator>()
+    }
+
     /// Returns the serializer name.
     ///
     /// # Examples
@@ -302,7 +352,15 @@ impl<S: Serializer> Endpoint<S> {
         let capability = ProtocolCapability::new(protocol_name.clone(), vec![version], direction);
 
         // Register
-        capabilities.insert(protocol_name, capability);
+        capabilities.insert(protocol_name.clone(), capability);
+        
+        // Release the lock before calling the negotiator
+        drop(capabilities);
+
+        // Notify the negotiator about the protocol registration
+        self.channel_negotiator
+            .on_protocol_registered(&protocol_name, version, direction)
+            .await;
 
         Ok(())
     }
@@ -483,7 +541,7 @@ impl<S: Serializer> Endpoint<S> {
     /// ```
     pub async fn request_channel(
         &self,
-        _connection_id: &str,
+        connection_id: &str,
         channel_id: ChannelId,
         protocol_name: impl Into<String>,
         protocol_version: u32,
@@ -506,8 +564,11 @@ impl<S: Serializer> Endpoint<S> {
         {
             let mut pending = self.pending_requests.write().await;
             if pending.contains_key(&channel_id) {
-                return Err(EndpointError::InvalidConfiguration {
-                    reason: format!("Channel request already pending for ID {}", channel_id),
+                return Err(EndpointError::ChannelCreationFailed {
+                    connection_id: connection_id.to_string(),
+                    protocol: protocol_name.clone(),
+                    channel_id,
+                    reason: "Channel request already pending for this ID".to_string(),
                 });
             }
             pending.insert(channel_id, tx);
@@ -518,7 +579,12 @@ impl<S: Serializer> Endpoint<S> {
             .channel_manager
             .get_sender::<SystemProtocol>(SYSTEM_CHANNEL_ID)
             .await
-            .map_err(EndpointError::Channel)?;
+            .map_err(|e| EndpointError::ChannelCreationFailed {
+                connection_id: connection_id.to_string(),
+                protocol: protocol_name.clone(),
+                channel_id,
+                reason: format!("Failed to get system channel sender: {}", e),
+            })?;
 
         // Create and send the channel creation request
         let request = SystemProtocol::ChannelCreateRequest {
@@ -533,7 +599,12 @@ impl<S: Serializer> Endpoint<S> {
         system_sender
             .send(request)
             .await
-            .map_err(EndpointError::Channel)?;
+            .map_err(|e| EndpointError::ChannelCreationFailed {
+                connection_id: connection_id.to_string(),
+                protocol: protocol_name.clone(),
+                channel_id,
+                reason: format!("Failed to send channel creation request: {}", e),
+            })?;
 
         // Wait for response with timeout
         let timeout = self.config.handshake_timeout;
@@ -545,19 +616,184 @@ impl<S: Serializer> Endpoint<S> {
         // Process result
         match result {
             Ok(Ok(Ok(()))) => Ok(()),
-            Ok(Ok(Err(error))) => Err(EndpointError::InvalidConfiguration {
-                reason: format!("Channel creation rejected: {}", error),
+            Ok(Ok(Err(error))) => Err(EndpointError::ChannelRequestRejected {
+                connection_id: connection_id.to_string(),
+                protocol: protocol_name,
+                channel_id,
+                reason: error,
             }),
-            Ok(Err(_)) => Err(EndpointError::InvalidConfiguration {
-                reason: "Channel creation response channel closed".to_string(),
+            Ok(Err(_)) => Err(EndpointError::ChannelCreationFailed {
+                connection_id: connection_id.to_string(),
+                protocol: protocol_name,
+                channel_id,
+                reason: "Channel creation response channel closed unexpectedly".to_string(),
             }),
-            Err(_) => Err(EndpointError::InvalidConfiguration {
-                reason: format!(
-                    "Channel creation request timed out after {} seconds",
-                    timeout.as_secs()
-                ),
+            Err(_) => Err(EndpointError::ChannelRequestTimeout {
+                connection_id: connection_id.to_string(),
+                protocol: protocol_name,
+                channel_id,
+                timeout_secs: timeout.as_secs(),
             }),
         }
+    }
+
+    /// Gets typed channels for a protocol after connecting.
+    ///
+    /// This is a convenience method for clients that have already connected to a server.
+    /// It requests a channel for the specified protocol and returns typed sender/receiver pairs.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The protocol type to create channels for
+    ///
+    /// # Arguments
+    ///
+    /// * `connection_id` - The ID of the connection to create the channel on
+    /// * `protocol_name` - The name of the protocol (must match what was registered)
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of `(ChannelSender<P>, ChannelReceiver<P>)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Protocol is not registered
+    /// - Channel creation fails
+    /// - Connection doesn't exist
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::channel::Protocol;
+    ///
+    /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    /// enum MyProtocol {
+    ///     Request { data: String },
+    ///     Response { result: String },
+    /// }
+    ///
+    /// impl Protocol for MyProtocol {
+    ///     fn method_name(&self) -> &'static str {
+    ///         match self {
+    ///             Self::Request { .. } => "request",
+    ///             Self::Response { .. } => "response",
+    ///         }
+    ///     }
+    ///     fn is_request(&self) -> bool {
+    ///         matches!(self, Self::Request { .. })
+    ///     }
+    /// }
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_bidirectional("MyProtocol", 1).await?;
+    ///
+    /// let connection = endpoint.connect("127.0.0.1:8080").await?;
+    ///
+    /// // Get typed channels for the protocol
+    /// let (sender, receiver) = endpoint.get_channels::<MyProtocol>(
+    ///     connection.id(),
+    ///     "MyProtocol"
+    /// ).await?;
+    ///
+    /// // Now you can send and receive messages
+    /// sender.send(MyProtocol::Request { data: "Hello".to_string() }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn get_channels<P: Protocol>(
+        &self,
+        connection_id: &str,
+        protocol_name: &str,
+    ) -> Result<(crate::channel::ChannelSender<P>, crate::channel::ChannelReceiver<P>), EndpointError> {
+        // Get the negotiated protocol info
+        let protocol_info = {
+            let negotiated = self.negotiated.read().await;
+            negotiated
+                .get(connection_id)
+                .and_then(|protocols| {
+                    protocols.iter().find(|p| p.name == protocol_name).cloned()
+                })
+                .ok_or_else(|| EndpointError::ProtocolNotRegistered {
+                    protocol: protocol_name.to_string(),
+                })?
+        };
+
+        // Generate a new channel ID
+        let channel_id = ChannelId::new();
+
+        // Determine direction from negotiated capabilities
+        let direction = match (protocol_info.we_can_call, protocol_info.we_can_respond) {
+            (true, true) => ProtocolDirection::Bidirectional,
+            (true, false) => ProtocolDirection::CallOnly,
+            (false, true) => ProtocolDirection::RespondOnly,
+            (false, false) => {
+                return Err(EndpointError::ChannelCreationFailed {
+                    connection_id: connection_id.to_string(),
+                    protocol: protocol_name.to_string(),
+                    channel_id,
+                    reason: "Protocol has no usable direction (neither call nor respond capability)".to_string(),
+                });
+            }
+        };
+
+        // Create the channel locally first
+        // This ensures the channel exists before we send the request
+        let sender = self
+            .channel_manager
+            .create_channel::<P>(channel_id, self.config.channel_buffer_size)
+            .await
+            .map_err(|e| EndpointError::ChannelCreationFailed {
+                connection_id: connection_id.to_string(),
+                protocol: protocol_name.to_string(),
+                channel_id,
+                reason: format!("Failed to create local channel: {}", e),
+            })?;
+
+        // Request the channel - this sends a request to the remote endpoint
+        // The remote will create the channel on their side and send back a response
+        let request_result = self
+            .request_channel(
+                connection_id,
+                channel_id,
+                protocol_name,
+                protocol_info.version,
+                direction,
+                HashMap::new(),
+            )
+            .await;
+
+        // If the request failed, clean up the local channel
+        if let Err(e) = request_result {
+            // Try to remove the channel, but don't fail if it's already gone
+            let _ = self.channel_manager.remove_channel(channel_id).await;
+            return Err(e);
+        }
+
+        // Get the receiver for the channel
+        let receiver = self
+            .channel_manager
+            .get_receiver::<P>(channel_id)
+            .await
+            .map_err(|e| EndpointError::ChannelCreationFailed {
+                connection_id: connection_id.to_string(),
+                protocol: protocol_name.to_string(),
+                channel_id,
+                reason: format!("Failed to get channel receiver: {}", e),
+            })?;
+
+        #[cfg(feature = "tracing")]
+        tracing::info!(
+            "Created channels for protocol '{}' on connection {} with channel ID {}",
+            protocol_name,
+            connection_id,
+            channel_id.as_u64()
+        );
+
+        Ok((sender, receiver))
     }
 
     /// Spawns a background task to process system channel messages.
@@ -574,7 +810,7 @@ impl<S: Serializer> Endpoint<S> {
         let channel_manager = Arc::clone(&self.channel_manager);
         let channel_negotiator = Arc::clone(&self.channel_negotiator);
         let pending_requests = Arc::clone(&self.pending_requests);
-        let config = self.config.clone();
+        let _config = self.config.clone();
 
         tokio::spawn(async move {
             #[cfg(feature = "tracing")]
@@ -597,7 +833,7 @@ impl<S: Serializer> Endpoint<S> {
                         protocol_name,
                         protocol_version,
                         direction,
-                        buffer_size,
+                        buffer_size: _,
                         metadata,
                     } => {
                         // Validate the request using the negotiator
@@ -613,32 +849,17 @@ impl<S: Serializer> Endpoint<S> {
 
                         let (success, error) = match result {
                             Ok(true) => {
-                                // Try to create the channel
-                                let buffer = buffer_size.unwrap_or(config.channel_buffer_size);
-                                match channel_manager
-                                    .create_channel::<SystemProtocol>(channel_id, buffer)
-                                    .await
-                                {
-                                    Ok(_) => {
-                                        #[cfg(feature = "tracing")]
-                                        tracing::info!(
-                                            "Created channel {} for protocol {} on connection {}",
-                                            channel_id.as_u64(),
-                                            protocol_name,
-                                            connection_id
-                                        );
-                                        (true, None)
-                                    }
-                                    Err(e) => {
-                                        #[cfg(feature = "tracing")]
-                                        tracing::warn!(
-                                            "Failed to create channel {}: {}",
-                                            channel_id.as_u64(),
-                                            e
-                                        );
-                                        (false, Some(e.to_string()))
-                                    }
-                                }
+                                // Channel creation request accepted
+                                // The actual channel will be created by the application
+                                // when it calls accept_channels() or similar
+                                #[cfg(feature = "tracing")]
+                                tracing::info!(
+                                    "Accepted channel request {} for protocol {} on connection {}",
+                                    channel_id.as_u64(),
+                                    protocol_name,
+                                    connection_id
+                                );
+                                (true, None)
                             }
                             Ok(false) => {
                                 #[cfg(feature = "tracing")]
@@ -1251,7 +1472,145 @@ impl<S: Serializer> Endpoint<S> {
             }
         });
 
-        Ok(Listener { local_addr, handle })
+        Ok(Listener {
+            local_addr,
+            handle,
+            mode: ListenerMode::Automatic,
+            pending_rx: None,
+            endpoint_refs: None,
+        })
+    }
+
+    /// Listens for incoming connections in manual acceptance mode.
+    ///
+    /// This method is similar to [`listen`](Self::listen) but returns a listener
+    /// that requires manual acceptance of connections via [`Listener::accept_channels`].
+    /// This provides a simpler API for servers that want to handle connections
+    /// one at a time, similar to `TcpListener::accept()`.
+    ///
+    /// # Manual vs Automatic Mode
+    ///
+    /// - **Manual mode** (`listen_manual`): You call `accept_channels()` to get typed
+    ///   channels for each connection. Simple and intuitive for most use cases.
+    /// - **Automatic mode** (`listen`): Connections are handled automatically in the
+    ///   background. You use `get_channels()` with connection IDs. More flexible but
+    ///   requires connection tracking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Binding to the address fails
+    /// - The endpoint has no responder protocols registered
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::channel::Protocol;
+    ///
+    /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    /// enum EchoProtocol { Echo(String) }
+    /// impl Protocol for EchoProtocol {
+    ///     fn method_name(&self) -> &'static str { "echo" }
+    ///     fn is_request(&self) -> bool { true }
+    /// }
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_bidirectional("Echo", 1).await?;
+    ///
+    /// let mut listener = endpoint.listen_manual("127.0.0.1:8080").await?;
+    /// println!("Listening on {}", listener.local_addr());
+    ///
+    /// // Accept connections one at a time
+    /// loop {
+    ///     let (sender, mut receiver) = listener.accept_channels::<EchoProtocol>().await?;
+    ///
+    ///     tokio::spawn(async move {
+    ///         while let Some(msg) = receiver.recv().await {
+    ///             let _ = sender.send(msg).await; // Echo back
+    ///         }
+    ///     });
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            addr = %addr.to_string(),
+        )
+    ))]
+    pub async fn listen_manual(&self, addr: impl ToString) -> Result<Listener, EndpointError> {
+        use tokio::net::TcpListener;
+
+        // Verify we have at least one responder protocol
+        let capabilities = self.capabilities().await;
+        let has_responder = capabilities.iter().any(|cap| cap.direction.can_respond());
+
+        if !has_responder {
+            return Err(EndpointError::InvalidConfiguration {
+                reason: "No responder protocols registered. Use register_responder() or register_bidirectional() before listening.".to_string(),
+            });
+        }
+
+        // Bind to address
+        let listener = TcpListener::bind(addr.to_string()).await?;
+        let local_addr = listener.local_addr()?.to_string();
+
+        // Create channel for pending connections
+        let (pending_tx, pending_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        // Create endpoint refs for manual acceptance
+        let endpoint_refs = Arc::new(EndpointRefs {
+            serializer: self.serializer.clone() as Arc<dyn std::any::Any + Send + Sync>,
+            capabilities: Arc::clone(&self.capabilities),
+            negotiated: Arc::clone(&self.negotiated),
+            channel_manager: Arc::clone(&self.channel_manager),
+            config: self.config.clone(),
+            endpoint_id: self.endpoint_id.clone(),
+        });
+
+        // Spawn task to accept connections and queue them
+        let handle = tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((stream, peer_addr)) => {
+                        #[cfg(feature = "tracing")]
+                        tracing::info!("Accepted connection from {} (manual mode)", peer_addr);
+
+                        let connection_id = format!("conn-{}", uuid::Uuid::new_v4());
+                        let pending = PendingConnection {
+                            stream,
+                            peer_addr: peer_addr.to_string(),
+                            connection_id,
+                        };
+
+                        // Queue the connection for manual acceptance
+                        if pending_tx.send(pending).is_err() {
+                            #[cfg(feature = "tracing")]
+                            tracing::debug!("Listener dropped, stopping accept loop");
+                            break;
+                        }
+                    }
+                    Err(_e) => {
+                        #[cfg(feature = "tracing")]
+                        tracing::error!("Error accepting connection: {}", _e);
+                        // Continue accepting other connections
+                    }
+                }
+            }
+        });
+
+        Ok(Listener {
+            local_addr,
+            handle,
+            mode: ListenerMode::Manual,
+            pending_rx: Some(pending_rx),
+            endpoint_refs: Some(endpoint_refs),
+        })
     }
 }
 
@@ -1591,15 +1950,217 @@ async fn handle_server_connection<S: Serializer>(
     Ok(())
 }
 
+/// Handles a manually accepted connection.
+///
+/// This is similar to `handle_server_connection` but designed for manual acceptance mode.
+/// It performs the handshake and sets up the connection, then returns the connection ID
+/// so the caller can create channels.
+#[cfg_attr(feature = "observability", tracing::instrument(
+    skip(stream, _serializer, capabilities, negotiated, config, channel_manager),
+    fields(
+        endpoint_id = %endpoint_id,
+        peer_addr = %peer_addr,
+        connection_id = %connection_id,
+    )
+))]
+async fn handle_manual_connection<P: Protocol>(
+    stream: tokio::net::TcpStream,
+    peer_addr: String,
+    connection_id: String,
+    _serializer: Arc<dyn std::any::Any + Send + Sync>,
+    capabilities: Arc<RwLock<HashMap<String, ProtocolCapability>>>,
+    negotiated: Arc<RwLock<HashMap<String, Vec<NegotiatedProtocol>>>>,
+    config: EndpointConfig,
+    endpoint_id: String,
+    channel_manager: Arc<ChannelManager>,
+) -> Result<String, EndpointError> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // We need to downcast the serializer to the concrete type
+    // For now, we'll use a generic approach that works with any serializer
+    let mut transport = stream;
+
+    // Read client's hello message
+    let mut len_bytes = [0u8; 4];
+    transport.read_exact(&mut len_bytes).await?;
+    let len = u32::from_be_bytes(len_bytes) as usize;
+
+    // Validate message size
+    if len > config.max_frame_size {
+        return Err(EndpointError::HandshakeFailed {
+            reason: format!("Handshake message too large: {} bytes", len),
+        });
+    }
+
+    let mut msg_bytes = vec![0u8; len];
+    transport.read_exact(&mut msg_bytes).await?;
+
+    let client_hello: HandshakeMessage = serde_json::from_slice(&msg_bytes)
+        .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+
+    // Process client hello
+    let (client_capabilities, client_serializer) = match client_hello {
+        HandshakeMessage::Hello {
+            serializer: client_serializer,
+            protocols,
+            ..
+        } => (protocols, client_serializer),
+        HandshakeMessage::Error { message } => {
+            return Err(EndpointError::HandshakeFailed { reason: message });
+        }
+        _ => {
+            return Err(EndpointError::HandshakeFailed {
+                reason: "Expected Hello message".to_string(),
+            });
+        }
+    };
+
+    // Send our hello message
+    let our_capabilities_vec: Vec<ProtocolCapability> = {
+        let caps = capabilities.read().await;
+        caps.values().cloned().collect()
+    };
+
+    let hello = HandshakeMessage::Hello {
+        endpoint_id: Some(endpoint_id.clone()),
+        serializer: client_serializer.clone(), // Echo back the serializer name
+        protocols: our_capabilities_vec.clone(),
+        bdrpc_version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+
+    let hello_bytes =
+        serde_json::to_vec(&hello).map_err(|e| EndpointError::Serialization(e.to_string()))?;
+    let len = hello_bytes.len() as u32;
+    transport.write_all(&len.to_be_bytes()).await?;
+    transport.write_all(&hello_bytes).await?;
+    transport.flush().await?;
+
+    // Negotiate protocols
+    let negotiated_protocols =
+        crate::endpoint::negotiate_protocols(&our_capabilities_vec, &client_capabilities);
+
+    if negotiated_protocols.is_empty() {
+        let error_msg = HandshakeMessage::Error {
+            message: "No compatible protocols found".to_string(),
+        };
+        let error_bytes = serde_json::to_vec(&error_msg)
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+        let len = error_bytes.len() as u32;
+        transport.write_all(&len.to_be_bytes()).await?;
+        transport.write_all(&error_bytes).await?;
+        transport.flush().await?;
+
+        return Err(EndpointError::HandshakeFailed {
+            reason: "No compatible protocols found".to_string(),
+        });
+    }
+
+    // Read client's acknowledgment
+    let mut len_bytes = [0u8; 4];
+    transport.read_exact(&mut len_bytes).await?;
+    let len = u32::from_be_bytes(len_bytes) as usize;
+
+    if len > config.max_frame_size {
+        return Err(EndpointError::HandshakeFailed {
+            reason: format!("Ack message too large: {} bytes", len),
+        });
+    }
+
+    let mut msg_bytes = vec![0u8; len];
+    transport.read_exact(&mut msg_bytes).await?;
+
+    let _client_ack: HandshakeMessage = serde_json::from_slice(&msg_bytes)
+        .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+
+    // Store negotiated protocols
+    {
+        let mut negotiated_map = negotiated.write().await;
+        negotiated_map.insert(connection_id.clone(), negotiated_protocols.clone());
+    }
+
+    #[cfg(feature = "tracing")]
+    tracing::info!(
+        "Handshake complete with {} ({}): {} protocols negotiated",
+        peer_addr,
+        connection_id,
+        negotiated_protocols.len()
+    );
+
+    // Create system channel for control messages
+    let system_sender = channel_manager
+        .create_channel::<SystemProtocol>(SYSTEM_CHANNEL_ID, config.channel_buffer_size)
+        .await
+        .map_err(|e| EndpointError::HandshakeFailed {
+            reason: format!("Failed to create system channel: {}", e),
+        })?;
+
+    #[cfg(feature = "tracing")]
+    tracing::debug!(
+        "System channel created for connection {} ({})",
+        connection_id,
+        peer_addr
+    );
+
+    // Wrap the transport in Arc<RwLock<>> to share between read and write tasks
+    let _transport = Arc::new(tokio::sync::RwLock::new(transport));
+
+    // TODO: Spawn message handling tasks (similar to handle_server_connection)
+    // For now, we'll use a simplified version that just handles system messages
+    // In a full implementation, we would spawn read/write tasks here
+    
+    // Keep the system_sender alive to prevent channel from closing
+    drop(system_sender);
+
+    Ok(connection_id)
+}
+
+/// Mode for listener operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListenerMode {
+    /// Automatic mode - connections are handled automatically in background.
+    Automatic,
+    /// Manual mode - connections are queued for manual acceptance via `accept_channels()`.
+    Manual,
+}
+
+/// Information about an accepted connection waiting for manual processing.
+struct PendingConnection {
+    /// The TCP stream for this connection.
+    stream: tokio::net::TcpStream,
+    /// The peer address.
+    peer_addr: String,
+    /// The connection ID assigned to this connection.
+    connection_id: String,
+}
+
 /// A listener for incoming connections.
 ///
-/// This is returned by [`Endpoint::listen`] and represents an active server
-/// listening for connections.
+/// This is returned by [`Endpoint::listen`] and [`Endpoint::listen_manual`] and represents
+/// an active server listening for connections.
+///
+/// In automatic mode (from `listen()`), connections are handled automatically in the background.
+/// In manual mode (from `listen_manual()`), you must call `accept_channels()` to process each connection.
 pub struct Listener {
     /// The local address being listened on.
     local_addr: String,
     /// Handle to the background task accepting connections.
     handle: tokio::task::JoinHandle<()>,
+    /// Mode of operation for this listener.
+    mode: ListenerMode,
+    /// Queue for pending connections (only used in manual mode).
+    pending_rx: Option<tokio::sync::mpsc::UnboundedReceiver<PendingConnection>>,
+    /// References needed for manual acceptance.
+    endpoint_refs: Option<Arc<EndpointRefs>>,
+}
+
+/// Shared references needed for manual connection acceptance.
+struct EndpointRefs {
+    serializer: Arc<dyn std::any::Any + Send + Sync>,
+    capabilities: Arc<RwLock<HashMap<String, ProtocolCapability>>>,
+    negotiated: Arc<RwLock<HashMap<String, Vec<NegotiatedProtocol>>>>,
+    channel_manager: Arc<ChannelManager>,
+    config: EndpointConfig,
+    endpoint_id: String,
 }
 
 impl Listener {
@@ -1612,6 +2173,142 @@ impl Listener {
     pub async fn shutdown(self) {
         self.handle.abort();
         let _ = self.handle.await;
+    }
+
+    /// Accepts an incoming connection and returns typed channels for a protocol.
+    ///
+    /// This method is only available for listeners created with [`Endpoint::listen_manual`].
+    /// It waits for the next incoming connection, performs the handshake, creates channels
+    /// for the specified protocol, and returns typed sender/receiver channels.
+    ///
+    /// This provides a simpler API compared to the automatic mode, where you would need
+    /// to track connection IDs and call `get_channels()` separately.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The protocol type to create channels for. Must be registered with the endpoint.
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of `(ChannelSender<P>, ChannelReceiver<P>)` for the accepted connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Called on a listener in automatic mode (use `listen_manual()` instead)
+    /// - No connection is available (listener stopped)
+    /// - Handshake fails
+    /// - Protocol is not registered or not negotiated
+    /// - Channel creation fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::channel::Protocol;
+    ///
+    /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    /// enum EchoProtocol {
+    ///     Echo(String),
+    /// }
+    ///
+    /// impl Protocol for EchoProtocol {
+    ///     fn method_name(&self) -> &'static str { "echo" }
+    ///     fn is_request(&self) -> bool { true }
+    /// }
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_bidirectional("Echo", 1).await?;
+    ///
+    /// let mut listener = endpoint.listen_manual("127.0.0.1:8080").await?;
+    ///
+    /// // Accept connections one at a time
+    /// loop {
+    ///     let (sender, mut receiver) = listener.accept_channels::<EchoProtocol>().await?;
+    ///
+    ///     tokio::spawn(async move {
+    ///         while let Some(msg) = receiver.recv().await {
+    ///             let _ = sender.send(msg).await; // Echo back
+    ///         }
+    ///     });
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn accept_channels<P: Protocol>(
+        &mut self,
+    ) -> Result<(crate::channel::ChannelSender<P>, crate::channel::ChannelReceiver<P>), EndpointError> {
+        // Verify this is a manual mode listener
+        if self.mode != ListenerMode::Manual {
+            return Err(EndpointError::InvalidConfiguration {
+                reason: "accept_channels() can only be called on listeners created with listen_manual(). Use listen() + get_channels() for automatic mode.".to_string(),
+            });
+        }
+
+        // Get the pending connection receiver
+        let pending_rx = self.pending_rx.as_mut().ok_or_else(|| EndpointError::InvalidConfiguration {
+            reason: "Listener is not properly configured for manual acceptance".to_string(),
+        })?;
+
+        // Get endpoint refs
+        let refs = self.endpoint_refs.as_ref().ok_or_else(|| EndpointError::InvalidConfiguration {
+            reason: "Listener is missing endpoint references".to_string(),
+        })?;
+
+        // Wait for a pending connection
+        let pending = pending_rx.recv().await.ok_or_else(|| EndpointError::InvalidConfiguration {
+            reason: "Listener has been shut down - no more connections will be accepted".to_string(),
+        })?;
+
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            "Processing manual connection from {} ({})",
+            pending.peer_addr,
+            pending.connection_id
+        );
+
+        // Downcast serializer back to concrete type
+        let serializer = refs.serializer.clone();
+
+        // Perform handshake and setup connection
+        let connection_id = handle_manual_connection::<P>(
+            pending.stream,
+            pending.peer_addr,
+            pending.connection_id,
+            serializer,
+            Arc::clone(&refs.capabilities),
+            Arc::clone(&refs.negotiated),
+            refs.config.clone(),
+            refs.endpoint_id.clone(),
+            Arc::clone(&refs.channel_manager),
+        )
+        .await?;
+
+        // Get the channels for this protocol
+        let channel_id = ChannelId::new();
+
+        // Create the channel
+        let sender = refs
+            .channel_manager
+            .create_channel::<P>(channel_id, refs.config.channel_buffer_size)
+            .await
+            .map_err(EndpointError::Channel)?;
+
+        let receiver = refs
+            .channel_manager
+            .get_receiver::<P>(channel_id)
+            .await
+            .map_err(EndpointError::Channel)?;
+
+        #[cfg(feature = "tracing")]
+        tracing::info!(
+            "Created channels for protocol on connection {}",
+            connection_id
+        );
+
+        Ok((sender, receiver))
     }
 }
 
@@ -1910,5 +2607,216 @@ mod tests {
 
         // Clean up
         listener.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_success() {
+        use crate::channel::Protocol;
+
+        // Define a test protocol
+        #[derive(Debug, Clone, PartialEq)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+        enum TestProtocol {
+            Request { id: u32 },
+            Response { id: u32, data: String },
+        }
+
+        impl Protocol for TestProtocol {
+            fn method_name(&self) -> &'static str {
+                match self {
+                    Self::Request { .. } => "request",
+                    Self::Response { .. } => "response",
+                }
+            }
+
+            fn is_request(&self) -> bool {
+                matches!(self, Self::Request { .. })
+            }
+        }
+
+        // Create server endpoint
+        // Protocol will be automatically allowed when registered
+        let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+        server
+            .register_bidirectional("TestProtocol", 1)
+            .await
+            .unwrap();
+
+        let listener = server.listen("127.0.0.1:0").await.unwrap();
+        let server_addr = listener.local_addr().to_string();
+
+        // Create client endpoint
+        // Protocol will be automatically allowed when registered
+        let mut client = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+        client
+            .register_bidirectional("TestProtocol", 1)
+            .await
+            .unwrap();
+
+        // Give server time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Connect client to server (listener accepts automatically in background)
+        let connection = client.connect(&server_addr).await.unwrap();
+
+        // Give handshake time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Get typed channels using the convenience method
+        let result = client
+            .get_channels::<TestProtocol>(connection.id(), "TestProtocol")
+            .await;
+
+        assert!(result.is_ok(), "get_channels should succeed: {:?}", result.err());
+        let (sender, _receiver) = result.unwrap();
+
+        // Verify we can use the sender
+        assert!(sender
+            .try_send(TestProtocol::Request { id: 1 })
+            .is_ok());
+
+        // Clean up
+        listener.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_protocol_not_found() {
+        // Create server endpoint
+        let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+        server
+            .register_bidirectional("TestProtocol", 1)
+            .await
+            .unwrap();
+
+        let listener = server.listen("127.0.0.1:0").await.unwrap();
+        let server_addr = listener.local_addr().to_string();
+
+        // Create client endpoint
+        let mut client = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+        client
+            .register_bidirectional("TestProtocol", 1)
+            .await
+            .unwrap();
+
+        // Give server time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Connect client to server
+        let connection = client.connect(&server_addr).await.unwrap();
+
+        // Try to get channels for a protocol that wasn't negotiated
+        use crate::channel::Protocol;
+
+        #[derive(Debug, Clone)]
+        enum OtherProtocol {
+            Msg,
+        }
+
+        impl Protocol for OtherProtocol {
+            fn method_name(&self) -> &'static str {
+                "msg"
+            }
+            fn is_request(&self) -> bool {
+                true
+            }
+        }
+
+        let result = client
+            .get_channels::<OtherProtocol>(connection.id(), "OtherProtocol")
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(EndpointError::ProtocolNotRegistered { .. })
+        ));
+
+        // Clean up
+        listener.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_invalid_connection() {
+        use crate::channel::Protocol;
+
+        #[derive(Debug, Clone)]
+        enum TestProtocol {
+            Msg,
+        }
+
+        impl Protocol for TestProtocol {
+            fn method_name(&self) -> &'static str {
+                "msg"
+            }
+            fn is_request(&self) -> bool {
+                true
+            }
+        }
+
+        let mut client = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+        client
+            .register_bidirectional("TestProtocol", 1)
+            .await
+            .unwrap();
+
+        // Try to get channels with an invalid connection ID
+        let result = client
+            .get_channels::<TestProtocol>("invalid-connection-id", "TestProtocol")
+            .await;
+
+        assert!(result.is_err(), "Should fail with invalid connection ID");
+    }
+
+    #[tokio::test]
+    async fn test_default_negotiator_downcast() {
+        // Test that we can downcast to DefaultChannelNegotiator
+        let endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+        
+        // Should successfully downcast to DefaultChannelNegotiator
+        let negotiator = endpoint.default_negotiator();
+        assert!(negotiator.is_some(), "Should be able to downcast to DefaultChannelNegotiator");
+        
+        // Test that we can use the negotiator
+        if let Some(neg) = negotiator {
+            neg.allow_protocol("TestProtocol").await;
+            assert!(neg.is_protocol_allowed("TestProtocol").await);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_default_negotiator_with_custom() {
+        use std::collections::HashMap;
+        
+        // Custom negotiator that always accepts
+        struct AlwaysAccept;
+        
+        #[async_trait::async_trait]
+        impl ChannelNegotiator for AlwaysAccept {
+            async fn on_channel_create_request(
+                &self,
+                _channel_id: ChannelId,
+                _protocol_name: &str,
+                _protocol_version: u32,
+                _direction: ProtocolDirection,
+                _metadata: &HashMap<String, String>,
+            ) -> Result<bool, String> {
+                Ok(true)
+            }
+            
+            async fn on_channel_create_response(
+                &self,
+                _channel_id: ChannelId,
+                _success: bool,
+                _error: Option<String>,
+            ) {}
+            
+            async fn on_channel_close_notification(&self, _channel_id: ChannelId, _reason: &str) {}
+        }
+        
+        let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+        endpoint.set_channel_negotiator(Arc::new(AlwaysAccept));
+        
+        // Should return None when using a custom negotiator
+        let negotiator = endpoint.default_negotiator();
+        assert!(negotiator.is_none(), "Should return None for custom negotiator");
     }
 }

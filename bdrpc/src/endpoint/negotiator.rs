@@ -122,7 +122,7 @@ use tokio::sync::RwLock;
 /// [`on_channel_create_response`]: ChannelNegotiator::on_channel_create_response
 /// [`on_channel_close_notification`]: ChannelNegotiator::on_channel_close_notification
 #[async_trait]
-pub trait ChannelNegotiator: Send + Sync {
+pub trait ChannelNegotiator: Send + Sync + std::any::Any {
     /// Called when a remote endpoint requests to create a channel.
     ///
     /// This method should validate the request and return:
@@ -260,6 +260,50 @@ pub trait ChannelNegotiator: Send + Sync {
     /// # }
     /// ```
     async fn on_channel_close_notification(&self, channel_id: ChannelId, reason: &str);
+
+    /// Called when a protocol is registered with the endpoint.
+    ///
+    /// This allows the negotiator to automatically allow protocols that are
+    /// registered, reducing the need for manual configuration.
+    ///
+    /// # Parameters
+    ///
+    /// - `protocol_name`: Name of the protocol being registered
+    /// - `version`: Version of the protocol
+    /// - `direction`: Direction support for the protocol
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use bdrpc::channel::ChannelId;
+    /// # use bdrpc::endpoint::{ChannelNegotiator, ProtocolDirection};
+    /// # use async_trait::async_trait;
+    /// # use std::collections::HashMap;
+    /// # struct MyNegotiator;
+    /// # #[async_trait]
+    /// # impl ChannelNegotiator for MyNegotiator {
+    /// # async fn on_channel_create_request(&self, _: ChannelId, _: &str, _: u32, _: ProtocolDirection, _: &HashMap<String, String>) -> Result<bool, String> { Ok(true) }
+    /// # async fn on_channel_create_response(&self, _: ChannelId, _: bool, _: Option<String>) {}
+    /// # async fn on_channel_close_notification(&self, _: ChannelId, _: &str) {}
+    /// async fn on_protocol_registered(
+    ///     &self,
+    ///     protocol_name: &str,
+    ///     version: u32,
+    ///     direction: ProtocolDirection,
+    /// ) {
+    ///     println!("Protocol {} v{} registered with {:?}", protocol_name, version, direction);
+    /// }
+    /// # }
+    /// ```
+    async fn on_protocol_registered(
+        &self,
+        protocol_name: &str,
+        version: u32,
+        direction: ProtocolDirection,
+    ) {
+        // Default implementation does nothing for backward compatibility
+        let _ = (protocol_name, version, direction);
+    }
 }
 
 /// Default channel negotiator that uses an allowlist of protocols.
@@ -477,6 +521,22 @@ impl ChannelNegotiator for DefaultChannelNegotiator {
             let _ = (channel_id, reason);
         }
     }
+
+    async fn on_protocol_registered(
+        &self,
+        protocol_name: &str,
+        _version: u32,
+        _direction: ProtocolDirection,
+    ) {
+        // Automatically allow the protocol when it's registered
+        self.allow_protocol(protocol_name).await;
+        
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            "Protocol '{}' automatically allowed after registration",
+            protocol_name
+        );
+    }
 }
 
 #[cfg(test)]
@@ -549,5 +609,35 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not allowed"));
+    }
+
+    #[tokio::test]
+    async fn test_automatic_protocol_registration() {
+        let negotiator = DefaultChannelNegotiator::new();
+
+        // Initially protocol is not allowed
+        assert!(!negotiator.is_protocol_allowed("TestProtocol").await);
+
+        // Simulate protocol registration notification
+        negotiator
+            .on_protocol_registered("TestProtocol", 1, ProtocolDirection::Bidirectional)
+            .await;
+
+        // Now protocol should be automatically allowed
+        assert!(negotiator.is_protocol_allowed("TestProtocol").await);
+
+        // Verify it can accept channel creation requests
+        let result = negotiator
+            .on_channel_create_request(
+                ChannelId::from(1),
+                "TestProtocol",
+                1,
+                ProtocolDirection::Bidirectional,
+                &HashMap::new(),
+            )
+            .await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap());
     }
 }

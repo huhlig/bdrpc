@@ -346,6 +346,7 @@
 //! - [`channel`](crate::channel) - Channel layer
 //! - [`reconnection`](crate::reconnection) - Reconnection strategies
 
+mod builder;
 mod config;
 mod direction;
 #[allow(clippy::module_inception)]
@@ -354,6 +355,7 @@ mod error;
 mod handshake;
 mod negotiator;
 
+pub use builder::EndpointBuilder;
 pub use config::EndpointConfig;
 pub use direction::ProtocolDirection;
 pub use endpoint::{Connection, Endpoint, Listener};

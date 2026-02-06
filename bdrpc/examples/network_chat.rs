@@ -148,17 +148,41 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
     println!("   Listening on {}", addr);
     println!("   ⏳ Waiting for clients to connect...\n");
 
-    // Create shared state
+    // Create shared state for tracking clients
     let _clients: ServerState = Arc::new(RwLock::new(HashMap::new()));
 
-    // Note: Full implementation would:
-    // 1. Accept connections using endpoint.listen()
-    // 2. For each connection, create a channel using endpoint.request_channel()
-    // 3. Spawn tasks to handle each client
-    // 4. Broadcast messages to all connected clients
+    // Step 4: Start listening for connections
+    println!("📡 Step 4: Accepting connections");
+    endpoint.listen(addr).await?;
+    println!("   ✅ Server listening on {}\n", addr);
 
-    println!("   ℹ️  Full server implementation coming soon");
-    println!("   This demonstrates the Endpoint API pattern\n");
+    // In a real implementation, we would:
+    // 1. Accept connections in a loop
+    // 2. For each connection, use get_channels() to create typed channels
+    // 3. Spawn a task to handle each client
+    // 4. Broadcast messages to all connected clients
+    //
+    // Example pattern:
+    // ```
+    // loop {
+    //     // Accept connection (this would be provided by listen())
+    //     let connection = /* accept connection */;
+    //
+    //     // Use the new get_channels() convenience method!
+    //     let (sender, receiver) = endpoint
+    //         .get_channels::<ChatProtocol>(connection.id(), "ChatProtocol")
+    //         .await?;
+    //
+    //     // Spawn task to handle this client
+    //     tokio::spawn(handle_client(sender, receiver, clients.clone()));
+    // }
+    // ```
+
+    println!("   ℹ️  Server ready - waiting for connections");
+    println!("   Use get_channels() to create typed channels per connection\n");
+
+    // Keep server running for demo
+    sleep(Duration::from_secs(2)).await;
 
     Ok(())
 }
@@ -187,17 +211,65 @@ async fn run_client(username: &str) -> Result<(), Box<dyn Error>> {
     println!("🌐 Step 3: Connecting to server");
     let addr = "127.0.0.1:9091";
     println!("   Connecting to {}", addr);
+    
+    let connection = endpoint.connect(addr).await?;
+    println!("   ✅ Connected to server (connection: {})\n", connection.id());
 
-    // Note: Full implementation would:
-    // 1. Connect using endpoint.connect()
-    // 2. Request a channel using endpoint.request_channel()
-    // 3. Send join message
-    // 4. Spawn task to receive messages
-    // 5. Send chat messages
-    // 6. Handle disconnection
+    // Step 4: Create typed channels using the new convenience method
+    println!("📺 Step 4: Creating typed channels");
+    println!("   Using get_channels() convenience method...");
+    
+    let (sender, mut receiver) = endpoint
+        .get_channels::<ChatProtocol>(connection.id(), "ChatProtocol")
+        .await?;
+    
+    println!("   ✅ Channels created successfully\n");
 
-    println!("   ℹ️  Full client implementation coming soon");
-    println!("   This demonstrates the Endpoint API pattern\n");
+    // Step 5: Send join message
+    println!("💬 Step 5: Joining chat");
+    sender
+        .send(ChatProtocol::Join {
+            username: username.to_string(),
+        })
+        .await?;
+    println!("   ✅ Join request sent\n");
+
+    // Step 6: Wait for join acknowledgment
+    println!("⏳ Step 6: Waiting for server response");
+    if let Some(msg) = receiver.recv().await {
+        match msg {
+            ChatProtocol::JoinAck { success, message } => {
+                if success {
+                    println!("   ✅ {}\n", message);
+                } else {
+                    println!("   ❌ {}\n", message);
+                    return Ok(());
+                }
+            }
+            other => {
+                println!("   ⚠️  Unexpected message: {:?}\n", other);
+            }
+        }
+    }
+
+    // Step 7: Send a test message
+    println!("📤 Step 7: Sending test message");
+    sender
+        .send(ChatProtocol::Message {
+            from: username.to_string(),
+            text: "Hello from BDRPC!".to_string(),
+        })
+        .await?;
+    println!("   ✅ Message sent\n");
+
+    // Step 8: Demonstrate the pattern (in real app, would loop)
+    println!("📥 Step 8: Receiving messages (demo)");
+    println!("   In a real app, spawn a task to continuously receive\n");
+
+    // Step 9: Leave chat
+    println!("👋 Step 9: Leaving chat");
+    sender.send(ChatProtocol::Leave).await?;
+    println!("   ✅ Leave notification sent\n");
 
     Ok(())
 }

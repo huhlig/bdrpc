@@ -132,6 +132,42 @@ pub enum EndpointError {
 
     /// Serialization error.
     Serialization(String),
+
+    /// Channel creation failed.
+    ChannelCreationFailed {
+        /// The connection identifier.
+        connection_id: String,
+        /// The protocol name.
+        protocol: String,
+        /// The channel ID that failed to create.
+        channel_id: crate::channel::ChannelId,
+        /// The reason for failure.
+        reason: String,
+    },
+
+    /// Channel request timed out.
+    ChannelRequestTimeout {
+        /// The connection identifier.
+        connection_id: String,
+        /// The protocol name.
+        protocol: String,
+        /// The channel ID that timed out.
+        channel_id: crate::channel::ChannelId,
+        /// The timeout duration in seconds.
+        timeout_secs: u64,
+    },
+
+    /// Channel request was rejected by peer.
+    ChannelRequestRejected {
+        /// The connection identifier.
+        connection_id: String,
+        /// The protocol name.
+        protocol: String,
+        /// The channel ID that was rejected.
+        channel_id: crate::channel::ChannelId,
+        /// The rejection reason from peer.
+        reason: String,
+    },
 }
 
 impl fmt::Display for EndpointError {
@@ -140,7 +176,11 @@ impl fmt::Display for EndpointError {
             Self::Transport(err) => write!(f, "transport error: {}", err),
             Self::Channel(err) => write!(f, "channel error: {}", err),
             Self::ProtocolNotRegistered { protocol } => {
-                write!(f, "protocol '{}' is not registered", protocol)
+                write!(
+                    f,
+                    "protocol '{}' is not registered. Hint: call register_bidirectional(), register_caller(), or register_responder() before connecting",
+                    protocol
+                )
             }
             Self::ProtocolAlreadyRegistered { protocol } => {
                 write!(f, "protocol '{}' is already registered", protocol)
@@ -152,7 +192,7 @@ impl fmt::Display for EndpointError {
             } => {
                 write!(
                     f,
-                    "cannot {} protocol '{}': endpoint is {} only",
+                    "cannot {} protocol '{}': endpoint is {} only. Hint: register with register_bidirectional() to support both directions",
                     operation, protocol, our_direction
                 )
             }
@@ -163,7 +203,7 @@ impl fmt::Display for EndpointError {
             } => {
                 write!(
                     f,
-                    "incompatible directions for protocol '{}': we are {}, peer is {}",
+                    "incompatible directions for protocol '{}': we are {}, peer is {}. Hint: ensure both endpoints use compatible directions (caller/responder or bidirectional)",
                     protocol, our_direction, peer_direction
                 )
             }
@@ -188,7 +228,7 @@ impl fmt::Display for EndpointError {
             } => {
                 write!(
                     f,
-                    "no common version for protocol '{}': we support {:?}, peer supports {:?}",
+                    "no common version for protocol '{}': we support {:?}, peer supports {:?}. Hint: ensure both endpoints support at least one common version",
                     protocol, our_versions, peer_versions
                 )
             }
@@ -202,12 +242,16 @@ impl fmt::Display for EndpointError {
             Self::SerializerMismatch { ours, theirs } => {
                 write!(
                     f,
-                    "serializer mismatch: we use '{}', peer uses '{}'",
+                    "serializer mismatch: we use '{}', peer uses '{}'. Hint: both endpoints must use the same serializer",
                     ours, theirs
                 )
             }
             Self::ConnectionNotFound { connection_id } => {
-                write!(f, "connection '{}' not found", connection_id)
+                write!(
+                    f,
+                    "connection '{}' not found. Hint: ensure the connection is still active and hasn't been closed",
+                    connection_id
+                )
             }
             Self::HandlerNotRegistered { protocol } => {
                 write!(f, "no handler registered for protocol '{}'", protocol)
@@ -217,6 +261,42 @@ impl fmt::Display for EndpointError {
             }
             Self::Io(err) => write!(f, "I/O error: {}", err),
             Self::Serialization(err) => write!(f, "serialization error: {}", err),
+            Self::ChannelCreationFailed {
+                connection_id,
+                protocol,
+                channel_id,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "failed to create channel for protocol '{}' on connection '{}' (channel ID: {}): {}. Hint: check that the protocol is registered and the connection is active",
+                    protocol, connection_id, channel_id.as_u64(), reason
+                )
+            }
+            Self::ChannelRequestTimeout {
+                connection_id,
+                protocol,
+                channel_id,
+                timeout_secs,
+            } => {
+                write!(
+                    f,
+                    "channel request for protocol '{}' on connection '{}' (channel ID: {}) timed out after {} seconds. Hint: check network connectivity and ensure the peer is responding",
+                    protocol, connection_id, channel_id.as_u64(), timeout_secs
+                )
+            }
+            Self::ChannelRequestRejected {
+                connection_id,
+                protocol,
+                channel_id,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "channel request for protocol '{}' on connection '{}' (channel ID: {}) was rejected by peer: {}. Hint: ensure the protocol is allowed by the peer's negotiator",
+                    protocol, connection_id, channel_id.as_u64(), reason
+                )
+            }
         }
     }
 }
@@ -259,37 +339,35 @@ mod tests {
         let err = EndpointError::ProtocolNotRegistered {
             protocol: "TestProtocol".to_string(),
         };
-        assert_eq!(err.to_string(), "protocol 'TestProtocol' is not registered");
+        assert!(err.to_string().contains("protocol 'TestProtocol' is not registered"));
+        assert!(err.to_string().contains("Hint:"));
 
         let err = EndpointError::DirectionNotSupported {
             protocol: "TestProtocol".to_string(),
             operation: "call".to_string(),
             our_direction: ProtocolDirection::RespondOnly,
         };
-        assert_eq!(
-            err.to_string(),
-            "cannot call protocol 'TestProtocol': endpoint is respond only only"
-        );
+        assert!(err.to_string().contains("cannot call protocol 'TestProtocol'"));
+        assert!(err.to_string().contains("respond only only"));
+        assert!(err.to_string().contains("Hint:"));
 
         let err = EndpointError::IncompatibleDirection {
             protocol: "TestProtocol".to_string(),
             our_direction: ProtocolDirection::CallOnly,
             peer_direction: ProtocolDirection::CallOnly,
         };
-        assert_eq!(
-            err.to_string(),
-            "incompatible directions for protocol 'TestProtocol': we are call only, peer is call only"
-        );
+        assert!(err.to_string().contains("incompatible directions for protocol 'TestProtocol'"));
+        assert!(err.to_string().contains("we are call only, peer is call only"));
+        assert!(err.to_string().contains("Hint:"));
 
         let err = EndpointError::NoCommonVersion {
             protocol: "TestProtocol".to_string(),
             our_versions: vec![1, 2],
             peer_versions: vec![3, 4],
         };
-        assert_eq!(
-            err.to_string(),
-            "no common version for protocol 'TestProtocol': we support [1, 2], peer supports [3, 4]"
-        );
+        assert!(err.to_string().contains("no common version for protocol 'TestProtocol'"));
+        assert!(err.to_string().contains("we support [1, 2], peer supports [3, 4]"));
+        assert!(err.to_string().contains("Hint:"));
 
         let err = EndpointError::FeatureNotSupported {
             protocol: "TestProtocol".to_string(),
@@ -299,6 +377,39 @@ mod tests {
             err.to_string(),
             "feature 'streaming' not supported for protocol 'TestProtocol'"
         );
+
+        // Test new error variants
+        let err = EndpointError::ChannelCreationFailed {
+            connection_id: "conn-123".to_string(),
+            protocol: "TestProtocol".to_string(),
+            channel_id: crate::channel::ChannelId::from(42),
+            reason: "test reason".to_string(),
+        };
+        assert!(err.to_string().contains("failed to create channel"));
+        assert!(err.to_string().contains("TestProtocol"));
+        assert!(err.to_string().contains("conn-123"));
+        assert!(err.to_string().contains("42"));
+        assert!(err.to_string().contains("Hint:"));
+
+        let err = EndpointError::ChannelRequestTimeout {
+            connection_id: "conn-123".to_string(),
+            protocol: "TestProtocol".to_string(),
+            channel_id: crate::channel::ChannelId::from(42),
+            timeout_secs: 30,
+        };
+        assert!(err.to_string().contains("timed out"));
+        assert!(err.to_string().contains("30 seconds"));
+        assert!(err.to_string().contains("Hint:"));
+
+        let err = EndpointError::ChannelRequestRejected {
+            connection_id: "conn-123".to_string(),
+            protocol: "TestProtocol".to_string(),
+            channel_id: crate::channel::ChannelId::from(42),
+            reason: "not allowed".to_string(),
+        };
+        assert!(err.to_string().contains("rejected"));
+        assert!(err.to_string().contains("not allowed"));
+        assert!(err.to_string().contains("Hint:"));
     }
 
     #[test]

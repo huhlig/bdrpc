@@ -81,6 +81,7 @@ Created via the Endpoint API, these channels:
 **Example (using #[bdrpc::service] macro - recommended):**
 
 ```rust,no_run
+// See examples/calculator_service.rs for a complete working example
 use bdrpc::service;
 use bdrpc::endpoint::{Endpoint, EndpointConfig};
 use bdrpc::serialization::JsonSerializer;
@@ -112,30 +113,19 @@ async fn example() -> Result<(), Box<dyn std::error::Error>> {
     server_endpoint.register_bidirectional("Calculator", 1).await?;
     server_endpoint.listen("127.0.0.1:8080").await?;
 
-    // Accept connection and get channels
-    let (sender, receiver) = server_endpoint.accept_channels::<CalculatorProtocol>().await?;
-
-    // Create dispatcher and handle requests
-    let calculator = MyCalculator;
-    let dispatcher = CalculatorDispatcher::new(calculator);
-
-    tokio::spawn(async move {
-        while let Some(request) = receiver.recv().await {
-            let response = dispatcher.dispatch(request).await;
-            sender.send(response).await.ok();
-        }
-    });
-
     // Client side
     let mut client_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
     client_endpoint.register_bidirectional("Calculator", 1).await?;
-    client_endpoint.connect("127.0.0.1:8080").await?;
+    let connection = client_endpoint.connect("127.0.0.1:8080").await?;
 
-    // Get channels and create client
-    let (sender, receiver) = client_endpoint.get_channels::<CalculatorProtocol>().await?;
+    // Get typed channels for the protocol
+    let (sender, receiver) = client_endpoint.get_channels::<CalculatorProtocol>(
+        connection.id(),
+        "Calculator"
+    ).await?;
+
+    // Create client and make RPC calls
     let client = CalculatorClient::new(sender, receiver);
-
-    // Make RPC calls
     let result = client.add(5, 3).await??;
     println!("5 + 3 = {}", result);
     Ok(())
@@ -145,6 +135,7 @@ async fn example() -> Result<(), Box<dyn std::error::Error>> {
 **Manual example (without macro):**
 
 ```rust,no_run
+// See examples/calculator_manual.rs for a complete working example
 use bdrpc::endpoint::{Endpoint, EndpointConfig};
 use bdrpc::serialization::JsonSerializer;
 use bdrpc::channel::{ChannelId, Protocol};
@@ -179,30 +170,16 @@ async fn example() -> Result<(), Box<dyn std::error::Error>> {
     server_endpoint.register_bidirectional("Calculator", 1).await?;
     server_endpoint.listen("127.0.0.1:8080").await?;
 
-    let (sender, mut receiver) = server_endpoint.accept_channels::<CalculatorProtocol>().await?;
-
-    // Handle requests manually
-    tokio::spawn(async move {
-        while let Some(request) = receiver.recv().await {
-            let response = match request {
-                CalculatorProtocol::AddRequest { a, b } => {
-                    CalculatorProtocol::AddResponse { result: a + b }
-                }
-                CalculatorProtocol::SubtractRequest { a, b } => {
-                  CalculatorProtocol::SubtractResponse { result: a - b }
-                }
-                _ => continue, // Ignore responses
-            };
-            sender.send(response).await.ok();
-        }
-    });
-
     // Client side
     let mut client_endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
     client_endpoint.register_bidirectional("Calculator", 1).await?;
-    client_endpoint.connect("127.0.0.1:8080").await?;
+    let connection = client_endpoint.connect("127.0.0.1:8080").await?;
 
-    let (sender, mut receiver) = client_endpoint.get_channels::<CalculatorProtocol>().await?;
+    // Get typed channels for the protocol
+    let (sender, mut receiver) = client_endpoint.get_channels::<CalculatorProtocol>(
+        connection.id(),
+        "Calculator"
+    ).await?;
 
     // Make request manually
     sender.send(CalculatorProtocol::AddRequest { a: 5, b: 3 }).await?;

@@ -146,6 +146,38 @@
 //! # }
 //! ```
 //!
+//! ### Using the Builder Pattern (Recommended)
+//!
+//! The [`EndpointBuilder`] provides a more ergonomic way to create endpoints:
+//!
+//! ```rust,no_run
+//! use bdrpc::endpoint::EndpointBuilder;
+//! use bdrpc::serialization::PostcardSerializer;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create a client endpoint with protocols pre-registered
+//! let client = EndpointBuilder::client(PostcardSerializer::default())
+//!     .with_caller("UserService", 1)
+//!     .with_caller("OrderService", 1)
+//!     .build()
+//!     .await?;
+//!
+//! // Create a server endpoint
+//! let server = EndpointBuilder::server(PostcardSerializer::default())
+//!     .with_responder("UserService", 1)
+//!     .with_responder("OrderService", 1)
+//!     .build()
+//!     .await?;
+//!
+//! // Create a peer endpoint for bidirectional communication
+//! let peer = EndpointBuilder::peer(PostcardSerializer::default())
+//!     .with_bidirectional("ChatProtocol", 1)
+//!     .build()
+//!     .await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! ## Examples
 //!
 //! The `examples/` directory contains several complete examples:

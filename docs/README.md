@@ -9,9 +9,12 @@ docs/
 ├── README.md                    # This file
 ├── quick-start.md               # Getting started guide
 ├── architecture-guide.md        # Deep dive into design
+├── diagrams.md                  # Visual diagrams (Mermaid)
 ├── performance-guide.md         # Optimization and tuning
 ├── protocol-evolution.md        # Evolving protocols over time
 ├── migration-guide.md           # Upgrading between versions
+├── best-practices.md            # Best practices for BDRPC
+├── troubleshooting-guide.md     # Common issues and solutions
 ├── error-recovery.md            # Error handling best practices
 ├── deadlock-prevention.md       # Avoiding deadlocks
 ├── streaming-pattern.md         # AsyncRead streaming pattern
@@ -26,7 +29,8 @@ docs/
 │   ├── ADR-008-protocol-directionality.md
 │   ├── ADR-009-frame-integrity-checking.md
 │   ├── ADR-010-dynamic-channel-negotiation.md
-│   └── ADR-011-large-transfer-streaming.md
+│   ├── ADR-011-large-transfer-streaming.md
+│   └── ADR-012-channel-transport-coupling.md
 └── dev/                         # Development documentation
     ├── implementation-plan.md   # Phased implementation roadmap
     ├── implementation-overview.md
@@ -101,6 +105,23 @@ ADRs document the key architectural decisions made during the design of BDRPC. E
 
 ## User Guides
 
+### [Visual Diagrams](diagrams.md)
+
+Comprehensive visual documentation with Mermaid diagrams:
+- Architecture overview showing component interactions
+- Channel creation flow diagram
+- Sequence diagrams for common patterns:
+  - `get_channels()` - client-initiated channel creation
+  - `accept_channels()` - server-side manual acceptance
+  - Bidirectional communication flow
+  - Connection establishment process
+  - Error recovery and reconnection
+- Component interaction details
+- Transport layer state machine
+- Usage examples with code snippets
+
+**Start here for visual learners** - these diagrams provide a clear overview of how BDRPC works.
+
 ### [Quick Start Guide](quick-start.md)
 
 Get started with BDRPC in minutes:
@@ -148,14 +169,37 @@ Evolve your protocols safely over time:
 
 ### [Migration Guide](migration-guide.md)
 
-Upgrade between BDRPC versions:
-- Version support policy
-- Migration paths for each version
-- Common migration patterns
-- Breaking changes documentation
-- Troubleshooting upgrade issues
+Upgrade between BDRPC versions and migrate to new APIs:
+- Migrating to convenience methods (`get_channels()`)
+- Migrating to automatic protocol registration
+- Migrating to new error types with helpful hints
+- Migrating serializers (JSON → Postcard → rkyv)
+- Breaking changes by version
+- Best practices for protocol design and evolution
 - Testing your migration
-- Rollback strategies
+
+### [Best Practices Guide](best-practices.md)
+
+Build robust, performant, and maintainable applications:
+- Protocol design (versioning, backward compatibility, strong types)
+- Channel management (registration, buffer sizes, cleanup)
+- Error handling (specific types, timeouts, logging)
+- Performance optimization (serializers, batching, compression)
+- Security considerations (validation, TLS, authentication, rate limiting)
+- Testing strategies (unit, integration, stress tests)
+- Production deployment (observability, graceful shutdown, configuration)
+
+### [Troubleshooting Guide](troubleshooting-guide.md)
+
+Diagnose and resolve common issues:
+- Connection issues (refused, timeout, address in use)
+- Channel creation failures (timeout, rejected, failed)
+- Serialization errors (failed serialization/deserialization)
+- Performance issues (low throughput, high memory, backpressure)
+- Deadlock prevention and detection
+- Network failures (dropped connections, slow networks)
+- Protocol negotiation (version mismatch, feature negotiation)
+- Debugging tips and getting help
 
 ### [Error Recovery Guide](error-recovery.md)
 

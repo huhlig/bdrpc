@@ -9,7 +9,7 @@ use bdrpc::channel::{Channel, ChannelId, Protocol};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Simple message for latency testing
 #[derive(Debug, Clone, Serialize, Deserialize)]
