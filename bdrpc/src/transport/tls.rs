@@ -412,9 +412,11 @@ where
         &self.metadata
     }
 
-    async fn shutdown(&mut self) -> Result<(), TransportError> {
-        use tokio::io::AsyncWriteExt;
-        self.stream.shutdown().await.map_err(TransportError::from)
+    fn shutdown(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>> {
+        Box::pin(async move {
+            use tokio::io::AsyncWriteExt;
+            self.stream.shutdown().await.map_err(TransportError::from)
+        })
     }
 }
 

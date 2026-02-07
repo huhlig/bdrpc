@@ -798,7 +798,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_tcp_caller() {
-        let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+        let endpoint = EndpointBuilder::client(JsonSerializer::default())
             .with_tcp_caller("main", "127.0.0.1:8080")
             .with_caller("UserService", 1)
             .build()
@@ -841,7 +841,7 @@ mod tests {
 
         let strategy = Arc::new(ExponentialBackoff::default());
 
-        let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+        let endpoint = EndpointBuilder::client(JsonSerializer::default())
             .with_tcp_caller("main", "127.0.0.1:8080")
             .with_reconnection_strategy("main", strategy)
             .with_caller("UserService", 1)
@@ -861,7 +861,7 @@ mod tests {
             .with_reconnection_strategy(strategy)
             .with_metadata("region", "us-west");
 
-        let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+        let endpoint = EndpointBuilder::client(JsonSerializer::default())
             .with_transport("custom", config, false)
             .with_caller("UserService", 1)
             .build()

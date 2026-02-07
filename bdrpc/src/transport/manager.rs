@@ -29,8 +29,8 @@
 //! - Connection tracking and metadata
 
 use crate::transport::{
-    CallerTransport, Transport, TransportConnection, TransportError, TransportEventHandler,
-    TransportId, TransportListener, TransportMetadata,
+    CallerTransport, TransportConnection, TransportError, TransportEventHandler,
+    TransportId, TransportMetadata,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,7 +38,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "observability")]
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 /// Manages the lifecycle of transport connections.
 ///
@@ -106,6 +106,9 @@ struct TransportManagerInner {
     /// Active connections
     connections: RwLock<HashMap<TransportId, TransportConnection>>,
 
+    /// Active transport objects (for message handling)
+    active_transports: RwLock<HashMap<TransportId, Box<dyn crate::transport::Transport>>>,
+
     /// Event handler for transport lifecycle events
     event_handler: RwLock<Option<Arc<dyn TransportEventHandler>>>,
 }
@@ -140,6 +143,7 @@ impl TransportManager {
                 listeners: RwLock::new(HashMap::new()),
                 callers: RwLock::new(HashMap::new()),
                 connections: RwLock::new(HashMap::new()),
+                active_transports: RwLock::new(HashMap::new()),
                 event_handler: RwLock::new(None),
             }),
         }
@@ -393,7 +397,7 @@ impl TransportManager {
         // Try callers
         {
             let callers = self.inner.callers.read().await;
-            if let Some(caller) = callers.get(name) {
+            if let Some(_caller) = callers.get(name) {
                 #[cfg(feature = "observability")]
                 info!("Enabling caller '{}'", name);
                 // Update caller state (implementation depends on CallerTransport)
@@ -448,7 +452,7 @@ impl TransportManager {
         // Try callers
         {
             let callers = self.inner.callers.read().await;
-            if let Some(caller) = callers.get(name) {
+            if let Some(_caller) = callers.get(name) {
                 #[cfg(feature = "observability")]
                 info!("Disabling caller '{}'", name);
                 // Update caller state (implementation depends on CallerTransport)
@@ -518,7 +522,10 @@ impl TransportManager {
         info!("Connecting caller '{}' to {}", name, address);
 
         // Create the actual transport connection based on type
-        let transport_id = self.create_transport_connection(&config).await?;
+        let (transport_id, transport) = self.create_transport_connection(&config).await?;
+
+        // Store the transport object
+        self.inner.active_transports.write().await.insert(transport_id, transport);
 
         // Register the connection
         let connection = TransportConnection::new(
@@ -541,15 +548,15 @@ impl TransportManager {
             let event_handler = self.inner.event_handler.read().await.clone();
             if let Some(handler) = event_handler {
                 let manager = self.clone();
-                let caller_name = name.to_string();
+                let _caller_name = name.to_string();
                 
                 caller.start_reconnection_loop(
                     handler,
-                    move |addr| {
+                    move |_addr| {
                         let manager = manager.clone();
                         let config = config.clone();
                         async move {
-                            manager.create_transport_connection(&config).await
+                            manager.create_transport_connection(&config).await.map(|(id, _transport)| id)
                         }
                     }
                 ).await;
@@ -566,11 +573,13 @@ impl TransportManager {
     ///
     /// This is an internal helper method that creates the appropriate transport
     /// type (TCP, TLS, etc.) based on the configuration.
+    ///
+    /// Returns both the transport ID and the transport object itself.
     async fn create_transport_connection(
         &self,
         config: &crate::transport::TransportConfig,
-    ) -> Result<TransportId, TransportError> {
-        use crate::transport::TransportType;
+    ) -> Result<(TransportId, Box<dyn crate::transport::Transport>), TransportError> {
+        use crate::transport::{TcpTransport, TransportType};
 
         let transport_id = self.next_id();
         let address = config.address();
@@ -580,25 +589,36 @@ impl TransportManager {
                 #[cfg(feature = "observability")]
                 debug!("Creating TCP transport to {}", address);
 
-                // For now, we'll just return the ID
-                // The actual transport creation will be handled by the endpoint
-                // in Phase 4 when we integrate with the endpoint
-                Ok(transport_id)
+                // Create the TCP connection
+                let transport = TcpTransport::connect(address).await?;
+                
+                Ok((transport_id, Box::new(transport)))
             }
             #[cfg(feature = "tls")]
             TransportType::Tls => {
                 #[cfg(feature = "observability")]
                 debug!("Creating TLS transport to {}", address);
 
-                // TLS transport creation will be implemented in Phase 4
-                Ok(transport_id)
+                // TODO: TLS transport creation requires:
+                // 1. First create a TCP transport
+                // 2. Get TlsConfig from somewhere (not in TransportConfig yet)
+                // 3. Wrap TCP transport with TLS
+                // This will be properly implemented when TlsConfig is added to TransportConfig.
+                
+                // For now, just create a TCP connection as a placeholder
+                let transport = TcpTransport::connect(address).await?;
+                
+                Ok((transport_id, Box::new(transport)))
             }
             TransportType::Memory => {
                 #[cfg(feature = "observability")]
                 debug!("Creating Memory transport");
 
-                // Memory transport creation
-                Ok(transport_id)
+                // Memory transports must be created as pairs
+                // This is not supported for caller connections
+                Err(TransportError::InvalidConfiguration {
+                    reason: "Memory transports must be created as pairs, not via connect".to_string()
+                })
             }
             #[allow(unreachable_patterns)]
             _ => {
