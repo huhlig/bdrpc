@@ -8,7 +8,88 @@
 use crate::parse::{MethodDef, ServiceDef};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Ident, ReturnType};
+use syn::{Ident, ReturnType, Type, TypeImplTrait, TypeParamBound};
+
+/// Extract the actual return type from a method signature.
+/// For async methods, this is the type after `->`.
+/// For methods returning `impl Future<Output = T>`, this extracts `T`.
+/// For methods returning `Pin<Box<dyn Future<Output = T>>>`, this extracts `T`.
+fn extract_return_type(return_type: &ReturnType) -> TokenStream {
+    match return_type {
+        ReturnType::Default => quote! { () },
+        ReturnType::Type(_, ty) => {
+            // Try to extract Output type from various Future patterns
+            if let Some(output_ty) = extract_future_output(&**ty) {
+                return output_ty;
+            }
+            // If not a Future type, return the type as-is
+            quote! { #ty }
+        }
+    }
+}
+
+/// Extract the Output type from a Future type.
+/// Handles: impl Future<Output = T>, Pin<Box<dyn Future<Output = T>>>, etc.
+fn extract_future_output(ty: &Type) -> Option<TokenStream> {
+    match ty {
+        // impl Future<Output = T>
+        Type::ImplTrait(TypeImplTrait { bounds, .. }) => {
+            for bound in bounds {
+                if let TypeParamBound::Trait(trait_bound) = bound {
+                    if let Some(output) = extract_output_from_trait_bound(trait_bound) {
+                        return Some(output);
+                    }
+                }
+            }
+            None
+        }
+        // Pin<Box<dyn Future<Output = T>>> or similar
+        Type::Path(type_path) => {
+            extract_output_from_path(type_path)
+        }
+        _ => None,
+    }
+}
+
+/// Extract Output type from a trait bound (e.g., Future<Output = T>).
+fn extract_output_from_trait_bound(trait_bound: &syn::TraitBound) -> Option<TokenStream> {
+    for segment in &trait_bound.path.segments {
+        if segment.ident == "Future" {
+            if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                for arg in &args.args {
+                    if let syn::GenericArgument::AssocType(assoc) = arg {
+                        if assoc.ident == "Output" {
+                            let output_ty = &assoc.ty;
+                            return Some(quote! { #output_ty });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Recursively extract Output type from a type path (e.g., Pin<Box<dyn Future<Output = T>>>).
+fn extract_output_from_path(type_path: &syn::TypePath) -> Option<TokenStream> {
+    for segment in &type_path.path.segments {
+        // Check if this segment has generic arguments
+        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+            for arg in &args.args {
+                match arg {
+                    syn::GenericArgument::Type(inner_ty) => {
+                        // Recursively check inner types
+                        if let Some(output) = extract_future_output(inner_ty) {
+                            return Some(output);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+}
 
 /// Generate the protocol enum for a service.
 ///
@@ -48,9 +129,11 @@ pub fn generate_protocol_enum(service: &ServiceDef) -> TokenStream {
             .collect();
 
         // Response variant with return type
-        let response_field = match &method.return_type {
-            ReturnType::Default => quote! {},
-            ReturnType::Type(_, ty) => quote! { result: #ty },
+        let extracted_type = extract_return_type(&method.return_type);
+        let response_field = if matches!(method.return_type, ReturnType::Default) {
+            quote! {}
+        } else {
+            quote! { result: #extracted_type }
         };
 
         variants.push(quote! {
@@ -366,11 +449,8 @@ fn generate_client_method(method: &MethodDef, protocol_name: &Ident) -> TokenStr
     // Parameter names for the request
     let param_names: Vec<_> = method.params.iter().map(|p| &p.name).collect();
 
-    // Return type
-    let return_type = match &method.return_type {
-        ReturnType::Default => quote! { () },
-        ReturnType::Type(_, ty) => quote! { #ty },
-    };
+    // Return type - extract from Future if needed
+    let return_type = extract_return_type(&method.return_type);
 
     let response_variant = format_ident!("{}Response", capitalize(&method.name.to_string()));
 
@@ -427,7 +507,7 @@ pub fn generate_server_dispatcher(service: &ServiceDef) -> TokenStream {
     let service_name = &service.name;
     let protocol_name = format_ident!("{}Protocol", service.name);
 
-    // Generate trait methods
+    // Generate trait methods - preserve async vs impl Future signature
     let trait_methods: Vec<_> = service
         .methods
         .iter()
@@ -442,13 +522,20 @@ pub fn generate_server_dispatcher(service: &ServiceDef) -> TokenStream {
                     quote! { #name: #ty }
                 })
                 .collect();
-            let return_type = match &method.return_type {
-                ReturnType::Default => quote! { () },
-                ReturnType::Type(_, ty) => quote! { #ty },
-            };
-
-            quote! {
-                async fn #method_name(&self, #(#params),*) -> #return_type;
+            
+            // If the method is async, generate async fn
+            // If it returns impl Future, preserve that signature
+            if method.is_async {
+                let return_type = extract_return_type(&method.return_type);
+                quote! {
+                    async fn #method_name(&self, #(#params),*) -> #return_type;
+                }
+            } else {
+                // Preserve the original return type for impl Future methods
+                let return_type = &method.return_type;
+                quote! {
+                    fn #method_name(&self, #(#params),*) #return_type;
+                }
             }
         })
         .collect();

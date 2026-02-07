@@ -256,13 +256,22 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodDef> {
         }
     }
 
-    // Validate return type
+    // Validate return type - must be async or return impl Future
     let return_type = method.sig.output.clone();
+    
     if !is_async {
-        return Err(Error::new_spanned(
-            &method.sig,
-            "All service methods must be async",
-        ));
+        // Check if return type is impl Future
+        let is_future = match &return_type {
+            ReturnType::Type(_, ty) => is_impl_future(ty),
+            ReturnType::Default => false,
+        };
+        
+        if !is_future {
+            return Err(Error::new_spanned(
+                &method.sig,
+                "Service methods must be async or return impl Future<Output = ...>",
+            ));
+        }
     }
 
     Ok(MethodDef {
@@ -274,6 +283,82 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodDef> {
         deprecation,
         required_features,
     })
+}
+
+/// Check if a type is `impl Future` or similar Future type.
+fn is_impl_future(ty: &Type) -> bool {
+    match ty {
+        Type::ImplTrait(impl_trait) => {
+            // Check if any bound is Future
+            impl_trait.bounds.iter().any(|bound| {
+                if let syn::TypeParamBound::Trait(trait_bound) = bound {
+                    trait_bound.path.segments.iter().any(|seg| {
+                        seg.ident == "Future"
+                    })
+                } else {
+                    false
+                }
+            })
+        }
+        Type::Path(type_path) => {
+            // Check for Pin<Box<dyn Future<...>>> or similar patterns
+            contains_future_in_path(type_path)
+        }
+        _ => false,
+    }
+}
+
+/// Recursively check if a type path contains Future anywhere in its structure.
+fn contains_future_in_path(type_path: &syn::TypePath) -> bool {
+    for segment in &type_path.path.segments {
+        // Direct Future reference
+        if segment.ident == "Future" {
+            return true;
+        }
+        
+        // Check generic arguments (e.g., Pin<Box<dyn Future>>)
+        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+            for arg in &args.args {
+                match arg {
+                    syn::GenericArgument::Type(inner_ty) => {
+                        if contains_future_in_type(inner_ty) {
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Recursively check if a type contains Future.
+fn contains_future_in_type(ty: &Type) -> bool {
+    match ty {
+        Type::Path(type_path) => contains_future_in_path(type_path),
+        Type::TraitObject(trait_obj) => {
+            // Check dyn Future
+            trait_obj.bounds.iter().any(|bound| {
+                if let syn::TypeParamBound::Trait(trait_bound) = bound {
+                    trait_bound.path.segments.iter().any(|seg| seg.ident == "Future")
+                } else {
+                    false
+                }
+            })
+        }
+        Type::ImplTrait(impl_trait) => {
+            // Check impl Future
+            impl_trait.bounds.iter().any(|bound| {
+                if let syn::TypeParamBound::Trait(trait_bound) = bound {
+                    trait_bound.path.segments.iter().any(|seg| seg.ident == "Future")
+                } else {
+                    false
+                }
+            })
+        }
+        _ => false,
+    }
 }
 
 /// Parse #[since(version = N)] attribute.

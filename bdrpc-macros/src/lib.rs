@@ -7,11 +7,15 @@
 //!
 //! ```ignore
 //! use bdrpc::service;
+//! use std::future::Future;
 //!
 //! #[service(direction = "bidirectional")]
 //! trait Calculator {
+//!     // Async methods are supported
 //!     async fn add(&self, a: i32, b: i32) -> Result<i32, String>;
-//!     async fn subtract(&self, a: i32, b: i32) -> Result<i32, String>;
+//!
+//!     // Methods returning impl Future are also supported
+//!     fn subtract(&self, a: i32, b: i32) -> impl Future<Output = Result<i32, String>> + Send;
 //! }
 //! ```
 //!
@@ -41,12 +45,36 @@ mod parse;
 ///   - `"respond"` or `"respond_only"`: Server can call, client responds
 ///   - `"bidirectional"`: Both sides can call and respond (default)
 ///
+/// # Method Signatures
+///
+/// Service methods can be defined in two ways:
+///
+/// 1. **Async methods** (recommended for most cases):
+///    ```ignore
+///    async fn method(&self, arg: String) -> Result<i32, String>;
+///    ```
+///
+/// 2. **Manual Future implementation** (for advanced use cases):
+///    ```ignore
+///    fn method(&self, arg: String) -> impl Future<Output = Result<i32, String>> + Send;
+///    ```
+///
+/// Both styles are fully supported and can be mixed within the same service trait.
+/// The macro will extract the `Output` type from `impl Future` and generate the
+/// appropriate protocol variants.
+///
 /// # Example
 ///
 /// ```ignore
+/// use std::future::Future;
+///
 /// #[bdrpc::service(direction = "call")]
 /// trait MyService {
-///     async fn method(&self, arg: String) -> Result<i32, String>;
+///     // Async method
+///     async fn async_method(&self, arg: String) -> Result<i32, String>;
+///
+///     // Manual Future method
+///     fn future_method(&self, value: i32) -> impl Future<Output = Result<i32, String>> + Send;
 /// }
 /// ```
 #[proc_macro_attribute]
