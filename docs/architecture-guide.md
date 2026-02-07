@@ -57,16 +57,34 @@ BDRPC uses a clean layered architecture where each layer has specific responsibi
 **Components**:
 - `Transport` trait: Abstraction for different transport types
 - `TcpTransport`: TCP/IP networking
-- `TlsTransport`: Encrypted TCP with TLS
+- `TlsTransport`: Encrypted TCP with TLS (optional feature)
 - `MemoryTransport`: In-process communication
 - `CompressionTransport`: Transparent compression
-- `TransportManager`: Connection lifecycle management
+- `TransportManager`: Enhanced connection lifecycle management (v0.2.0+)
+  - Manages multiple listener transports (servers)
+  - Manages multiple caller transports (clients)
+  - Tracks active connections
+  - Handles automatic reconnection per transport
+  - Supports dynamic transport enable/disable
+  - Provides lifecycle event callbacks
 
 **Key Features**:
 - Async I/O with Tokio
+- Multiple concurrent transports
+- Named transport connections
+- Automatic reconnection with configurable strategies
+- Transport failover support
 - Connection pooling
 - Graceful shutdown
 - Error propagation
+- Dynamic transport management (add/remove at runtime)
+
+**v0.2.0 Enhancements**:
+- **Multiple Listeners**: Servers can listen on multiple addresses/ports simultaneously
+- **Named Callers**: Clients can configure multiple named connections for failover
+- **Reconnection Strategies**: Per-transport reconnection with exponential backoff, circuit breakers, etc.
+- **Event Callbacks**: `TransportEventHandler` trait for connection lifecycle events
+- **Transport Metadata**: Attach custom metadata to transports for routing/monitoring
 
 #### 2. Serialization Layer
 
@@ -230,6 +248,132 @@ Client                          Server
   │<─── Channel Ready ────────────│
   │                               │
   │  Application Messages         │
+
+### Enhanced Transport Manager (v0.2.0+)
+
+The Enhanced Transport Manager introduced in v0.2.0 provides sophisticated transport lifecycle management:
+
+```text
+TransportManager
+│
+├─ Listener Transports (Servers)
+│  ├─ TCP Listener #1 (0.0.0.0:8080)
+│  ├─ TCP Listener #2 (0.0.0.0:8081)
+│  └─ TLS Listener (0.0.0.0:8443)
+│
+├─ Caller Transports (Clients)
+│  ├─ "primary" → 127.0.0.1:8080
+│  │  ├─ Reconnection Strategy: ExponentialBackoff
+│  │  ├─ State: Connected
+│  │  └─ Active Connection: TransportId(42)
+│  │
+│  └─ "backup" → 127.0.0.1:8081
+│     ├─ Reconnection Strategy: ExponentialBackoff
+│     ├─ State: Disconnected
+│     └─ Reconnection Task: Running
+│
+└─ Active Connections
+   ├─ TransportId(42) → TCP connection
+   ├─ TransportId(43) → TLS connection
+   └─ TransportId(44) → TCP connection
+```
+
+**Key Components**:
+
+1. **TransportListener**: Trait for server-side transport acceptance
+   - Accepts incoming connections
+   - Provides local address information
+   - Supports graceful shutdown
+
+2. **CallerTransport**: Client-side transport with reconnection
+   - Named transport configuration
+   - Automatic reconnection loop
+   - State machine (Disconnected, Connecting, Connected, Reconnecting, Disabled)
+   - Per-transport reconnection strategy
+
+3. **TransportConnection**: Active connection tracking
+   - Transport ID for identification
+   - Connection metadata
+   - Lifecycle management
+
+4. **TransportEventHandler**: Lifecycle event callbacks
+   - `on_transport_connected()`: New connection established
+   - `on_transport_disconnected()`: Connection lost
+   - `on_new_channel_request()`: Channel creation request
+
+**Reconnection State Machine**:
+
+```text
+┌─────────────┐
+│ Disconnected│
+└──────┬──────┘
+       │ connect()
+       ↓
+┌─────────────┐
+│ Connecting  │
+└──────┬──────┘
+       │ success
+       ↓
+┌─────────────┐     connection lost
+│  Connected  │────────────────────┐
+└─────────────┘                    │
+                                   ↓
+                            ┌──────────────┐
+                            │ Reconnecting │
+                            └──────┬───────┘
+                                   │
+                                   │ retry with backoff
+                                   └────────────┐
+                                                │
+                                   ┌────────────↓
+                                   │
+                            max attempts reached
+                                   │
+                                   ↓
+                            ┌─────────────┐
+                            │ Disconnected│
+                            └─────────────┘
+```
+
+**Transport Lifecycle**:
+
+```text
+Server Startup:
+1. Create TransportManager
+2. Add listener transports (TCP, TLS, etc.)
+3. Listeners automatically accept connections
+4. Each connection triggers on_transport_connected()
+5. System channels created automatically
+6. Application channels negotiated on-demand
+
+Client Startup:
+1. Create TransportManager
+2. Add caller transports with names
+3. Configure reconnection strategies
+4. Call connect_transport("name")
+5. Automatic reconnection on failure
+6. Channels restored after reconnection
+
+Dynamic Management:
+1. Add new transports at runtime
+2. Remove unused transports
+3. Enable/disable transports temporarily
+4. Query transport status
+5. Update reconnection strategies
+```
+
+**Benefits**:
+
+- **Multiple Transports**: Run servers on multiple ports/protocols simultaneously
+- **Named Connections**: Reference transports by name for clarity and failover
+- **Automatic Reconnection**: Built-in reconnection with configurable strategies
+- **Failover Support**: Switch between transports automatically
+- **Dynamic Management**: Add/remove transports at runtime
+- **Event-Driven**: React to connection lifecycle events
+- **Metadata Support**: Attach custom metadata for routing/monitoring
+
+For detailed configuration examples, see the [Transport Configuration Guide](transport-configuration.md).
+
 ```
 
 ### Error Propagation
