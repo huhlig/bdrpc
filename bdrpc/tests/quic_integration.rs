@@ -320,7 +320,7 @@ async fn test_quic_metadata() {
     let server_addr = listener.local_addr().expect("Failed to get address");
 
     let server_handle = tokio::spawn(async move {
-        let transport = listener.accept().await.expect("Failed to accept");
+        let mut transport = listener.accept().await.expect("Failed to accept");
 
         // Check server-side metadata
         let metadata = transport.metadata();
@@ -328,11 +328,15 @@ async fn test_quic_metadata() {
         assert!(metadata.peer_addr.is_some());
         assert!(metadata.id.as_u64() > 0);
         
+        // Read the data sent by client to keep stream alive
+        let mut buf = vec![0u8; 1024];
+        let _ = transport.read(&mut buf).await;
+        
         // Keep transport alive longer
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     });
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
 
     let mut client = QuicTransport::connect(server_addr.to_string(), config)
         .await
@@ -347,6 +351,9 @@ async fn test_quic_metadata() {
     assert!(metadata.peer_addr.is_some());
     assert!(metadata.id.as_u64() > 0);
 
+    // Wait a bit before dropping to ensure server reads
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    
     drop(client);
     server_handle.await.expect("Server failed");
 }
