@@ -49,9 +49,10 @@
   - ✅ **Performance benchmarks complete: 2.67M-3.27M msg/s (batch throughput)**
   - ✅ No performance regression detected
   - 📝 Memory leak testing deferred to production monitoring
-- ⏳ **Phase 8:** Migration Tools & Final Polish (Pending)
+- ⏳ **Phase 8:** WebSocket & QUIC Transport Support (Pending)
+- ⏳ **Phase 9:** Migration Tools & Final Polish (Pending)
 
-**Current Milestone:** 87.5% Complete (7 of 8 phases done)
+**Current Milestone:** 77.8% Complete (7 of 9 phases done)
 **Last Updated:** 2026-02-07 (Late Evening - Phase 7 Complete ✅)
 
 ## Executive Summary
@@ -816,12 +817,197 @@ All stress tests focus on the TransportManager API and validate behavior under h
 
 ---
 
-### Phase 8: Migration Tools & Final Polish (Week 12)
-**Goal:** Prepare for release
+### Phase 8: WebSocket & QUIC Transport Support (Week 12-14)
+**Goal:** Add WebSocket and WebTransport over QUIC support
+**Status:** Planned for v0.2.0
+
+#### Rationale
+- **WebSocket:** Essential for browser-based clients and web applications
+- **QUIC/WebTransport:** Modern, high-performance protocol with built-in multiplexing and 0-RTT
+- **Use Cases:**
+  - Web browsers connecting to BDRPC servers
+  - Mobile apps requiring efficient reconnection
+  - Low-latency gaming and real-time applications
+  - Cross-platform compatibility
+
+#### Tasks
+
+##### WebSocket Support
+- [ ] Add `websocket` feature flag to Cargo.toml
+- [ ] Implement `WebSocketTransport` using `tokio-tungstenite`
+- [ ] Implement `WebSocketListener` for server-side
+- [ ] Add WebSocket configuration options (compression, max frame size, etc.)
+- [ ] Support both `ws://` and `wss://` (secure WebSocket)
+- [ ] Add WebSocket-specific error handling
+- [ ] Implement ping/pong keepalive mechanism
+- [ ] Add WebSocket examples (client and server)
+- [ ] Write WebSocket integration tests
+- [ ] Document WebSocket usage patterns
+
+##### QUIC/WebTransport Support
+- [ ] Add `quic` feature flag to Cargo.toml
+- [ ] Implement `QuicTransport` using `quinn` or `wtransport`
+- [ ] Implement `QuicListener` for server-side
+- [ ] Add QUIC configuration options (congestion control, flow control, etc.)
+- [ ] Support 0-RTT connection establishment
+- [ ] Implement connection migration support
+- [ ] Add QUIC-specific error handling
+- [ ] Handle stream multiplexing efficiently
+- [ ] Add QUIC examples (client and server)
+- [ ] Write QUIC integration tests
+- [ ] Document QUIC usage patterns
+
+##### Integration & Testing
+- [ ] Update `TransportType` enum with `WebSocket` and `Quic` variants
+- [ ] Update `EndpointBuilder` with WebSocket/QUIC methods
+  - `with_websocket_listener(addr)`
+  - `with_websocket_caller(name, addr)`
+  - `with_quic_listener(addr, config)`
+  - `with_quic_caller(name, addr, config)`
+- [ ] Add transport-specific configuration structs
+  - `WebSocketConfig`
+  - `QuicConfig`
+- [ ] Update transport configuration guide
+- [ ] Add cross-transport compatibility tests
+- [ ] Performance benchmarks for new transports
+- [ ] Stress tests for WebSocket and QUIC
+
+##### Documentation
+- [ ] Create WebSocket transport guide
+- [ ] Create QUIC transport guide
+- [ ] Add browser client examples (WebSocket)
+- [ ] Add mobile app patterns (QUIC)
+- [ ] Update architecture guide with new transports
+- [ ] Create transport comparison matrix
+- [ ] Document when to use each transport type
+
+#### Deliverables
+
+**Code:**
+```rust
+// WebSocket Transport
+pub struct WebSocketTransport {
+    stream: WebSocketStream<TcpStream>,
+    config: WebSocketConfig,
+}
+
+pub struct WebSocketConfig {
+    pub max_frame_size: usize,
+    pub max_message_size: usize,
+    pub compression: bool,
+    pub ping_interval: Duration,
+}
+
+// QUIC Transport
+pub struct QuicTransport {
+    connection: quinn::Connection,
+    send_stream: quinn::SendStream,
+    recv_stream: quinn::RecvStream,
+    config: QuicConfig,
+}
+
+pub struct QuicConfig {
+    pub max_idle_timeout: Duration,
+    pub keep_alive_interval: Duration,
+    pub max_concurrent_streams: u64,
+    pub enable_0rtt: bool,
+}
+
+// Builder methods
+impl<S: Serializer> EndpointBuilder<S> {
+    pub fn with_websocket_listener(self, addr: impl ToString) -> Self;
+    pub fn with_websocket_caller(self, name: impl ToString, addr: impl ToString) -> Self;
+    pub fn with_quic_listener(self, addr: impl ToString, config: QuicConfig) -> Self;
+    pub fn with_quic_caller(self, name: impl ToString, addr: impl ToString, config: QuicConfig) -> Self;
+}
+```
+
+**Examples:**
+- `examples/websocket_server.rs` - WebSocket server with browser client
+- `examples/websocket_client.rs` - WebSocket client
+- `examples/quic_server.rs` - QUIC server with 0-RTT
+- `examples/quic_client.rs` - QUIC client with connection migration
+- `examples/browser_chat/` - Full browser-based chat application
+
+**Documentation:**
+- `docs/websocket-transport.md` - WebSocket transport guide
+- `docs/quic-transport.md` - QUIC transport guide
+- `docs/transport-comparison.md` - When to use each transport
+- `docs/browser-integration.md` - Browser client patterns
+
+**Tests:**
+- WebSocket integration tests (10+ tests)
+- QUIC integration tests (10+ tests)
+- Cross-transport compatibility tests
+- Performance benchmarks for new transports
+
+#### Dependencies
+
+**WebSocket:**
+- `tokio-tungstenite = "0.21"` - Async WebSocket implementation
+- `tungstenite = "0.21"` - WebSocket protocol
+- Optional: `flate2` for compression support
+
+**QUIC:**
+- `quinn = "0.10"` - QUIC implementation
+- OR `wtransport = "0.1"` - WebTransport over QUIC
+- `rustls = "0.21"` - TLS for QUIC
+- `rcgen = "0.11"` - Certificate generation for testing
+
+#### Testing Strategy
+
+1. **Unit Tests:** Test each transport implementation independently
+2. **Integration Tests:** Test transports with full endpoint stack
+3. **Cross-Transport Tests:** Verify interoperability between transport types
+4. **Performance Tests:** Benchmark WebSocket and QUIC vs TCP/TLS
+5. **Browser Tests:** Manual testing with browser clients (WebSocket)
+6. **Mobile Tests:** Test QUIC connection migration on mobile networks
+
+#### Performance Goals
+
+**WebSocket:**
+- Throughput: > 1M msg/s (comparable to TCP)
+- Latency: < 1ms overhead vs raw TCP
+- Browser compatibility: All modern browsers
+
+**QUIC:**
+- Throughput: > 2M msg/s (better than TCP due to multiplexing)
+- Latency: < 0.5ms with 0-RTT
+- Connection migration: < 100ms failover time
+- Packet loss resilience: Better than TCP
+
+#### Migration Path
+
+- WebSocket and QUIC are additive features (non-breaking)
+- Existing TCP/TLS transports remain unchanged
+- Users opt-in via feature flags
+- No changes required for existing code
+- New transports available via builder methods
+
+#### Timeline
+
+- **Week 12:** WebSocket implementation and testing
+- **Week 13:** QUIC implementation and testing
+- **Week 14:** Documentation, examples, and polish
+
+#### Success Criteria
+
+- [ ] WebSocket transport fully functional
+- [ ] QUIC transport fully functional
+- [ ] All tests passing (500+ tests expected)
+- [ ] Performance goals met
+- [ ] Browser client example works
+- [ ] Documentation complete
+- [ ] Ready for integration into v0.2.0
+
+---
+
+### Phase 9: Migration Tools & Final Polish (Week 15)
+**Goal:** Prepare for v0.2.0 release
 
 #### Tasks
 - [ ] Create automated migration tool (optional)
-- [ ] Write migration guide with examples
+- [ ] Final review of migration guide
 - [ ] Update CHANGELOG.md
 - [ ] Update version numbers
 - [ ] Final code review
@@ -830,7 +1016,7 @@ All stress tests focus on the TransportManager API and validate behavior under h
 - [ ] Tag release candidate
 
 #### Deliverables
-- `docs/migration-guide-v0.2.0.md`
+- `docs/migration-guide-v0.2.0.md` (already complete)
 - `CHANGELOG.md` updated
 - Release notes
 - Migration tool (if implemented)
@@ -911,8 +1097,9 @@ All stress tests focus on the TransportManager API and validate behavior under h
 | 5. Builder Enhancement | 1 week | Enhanced EndpointBuilder |
 | 6. Examples & Docs | 1 week | Updated documentation |
 | 7. Testing & Hardening | 2 weeks | Comprehensive tests |
-| 8. Migration & Polish | 1 week | Release preparation |
-| **Total** | **12 weeks** | **v0.2.0 Release** |
+| 8. WebSocket & QUIC | 3 weeks | New transport types |
+| 9. Migration & Polish | 1 week | Release preparation |
+| **Total** | **15 weeks** | **v0.2.0 Release** |
 
 ## Resource Requirements
 
