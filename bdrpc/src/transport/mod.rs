@@ -209,6 +209,7 @@
 //! - Unix domain sockets for local IPC
 
 mod config;
+mod enhanced;
 mod error;
 mod manager;
 mod memory;
@@ -222,6 +223,9 @@ mod tls;
 mod compression;
 
 pub use config::{TransportConfig, TransportType};
+pub use enhanced::{
+    CallerState, CallerTransport, TransportConnection, TransportEventHandler, TransportListener,
+};
 pub use error::TransportError;
 pub use manager::TransportManager;
 pub use memory::MemoryTransport;

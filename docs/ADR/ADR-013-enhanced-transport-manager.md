@@ -1,80 +1,35 @@
 # ADR-013: Enhanced Transport Manager
 
-**Status**: Accepted  
-**Date**: 2026-02-07  
-**Deciders**: Development Team  
-**Related**: ADR-001 (Core Architecture), ADR-002 (Reconnection Strategy), ADR-012 (Channel-Transport Coupling)
+**Status:** Accepted  
+**Date:** 2026-02-07  
+**Deciders:** Core Team  
+**Related:** [ADR-012: Channel-Transport Coupling](ADR-012-channel-transport-coupling.md)
 
 ## Context
 
-The current BDRPC architecture has several limitations in transport management:
+The current BDRPC v0.1.0 architecture has a `TransportManager` that only tracks transport metadata. The actual transport lifecycle management (connecting, listening, reconnection) is handled directly by the `Endpoint`. This creates several limitations:
 
-1. **Single Transport Focus**: The Endpoint directly manages connect/listen operations, making it difficult to support multiple transport types simultaneously
-2. **No Reconnection Management**: Reconnection logic is ad-hoc and not centrally managed
-3. **Limited Flexibility**: Cannot dynamically enable/disable transports or switch between them
-4. **Tight Coupling**: Endpoint is tightly coupled to transport lifecycle, making it harder to test and extend
-5. **No Multi-Transport Support**: Cannot run multiple listeners (e.g., TCP + TLS + WebSocket) simultaneously
+1. **Single Transport Type**: Each endpoint can only use one transport type at a time
+2. **Manual Reconnection**: Reconnection logic must be implemented by users
+3. **No Dynamic Management**: Cannot enable/disable transports at runtime
+4. **Limited Observability**: No centralized events for transport lifecycle
+5. **Tight Coupling**: Endpoint is tightly coupled to transport implementation details
 
-### Current Architecture Issues
-
-```rust
-// Current: Endpoint directly manages transports
-let mut endpoint = Endpoint::new(serializer, config);
-let conn = endpoint.connect("127.0.0.1:8080").await?;  // Only one transport type
-let listener = endpoint.listen("0.0.0.0:8080").await?;  // Only one listener
-```
-
-Problems:
-- No way to have multiple listeners on different ports/protocols
-- No automatic reconnection management
-- Transport lifecycle tied to Endpoint lifecycle
-- Difficult to add new transport types
-- No transport-level observability
+For v0.2.0, we need an enhanced `TransportManager` that:
+- Supports multiple transport types simultaneously (TCP, TLS, WebSocket, QUIC, etc.)
+- Manages both listener (server) and caller (client) transports
+- Provides automatic reconnection for caller transports
+- Enables dynamic transport enable/disable
+- Offers lifecycle event callbacks
+- Maintains backward compatibility where possible
 
 ## Decision
 
-We will enhance the `TransportManager` to become a full-featured transport lifecycle manager that:
+We will implement an enhanced `TransportManager` with the following architecture:
 
-1. **Manages Multiple Transports**: Support multiple listener and caller transports simultaneously
-2. **Handles Reconnection**: Automatically reconnect caller transports using pluggable strategies
-3. **Provides Lifecycle Management**: Enable/disable transports dynamically
-4. **Offers Event Callbacks**: Notify on transport lifecycle events (connect, disconnect, new channels)
-5. **Maintains Separation**: Keep transport concerns separate from endpoint protocol logic
+### Core Types
 
-### New Architecture
-
-```rust
-// Enhanced: TransportManager handles all transport concerns
-let endpoint = EndpointBuilder::server(serializer)
-    .with_tcp_listener("0.0.0.0:8080")
-    .with_tls_listener("0.0.0.0:8443", tls_config)
-    .with_tcp_caller("backup", "backup.example.com:8080")
-    .with_reconnection_strategy("backup", ExponentialBackoff::default())
-    .with_responder("UserService", 1)
-    .build()
-    .await?;
-
-// Server automatically accepts on all configured listeners
-// Callers automatically reconnect on failure
-```
-
-### Key Components
-
-#### 1. TransportConfig
-Configuration for a single transport (listener or caller):
-
-```rust
-pub struct TransportConfig {
-    pub transport_type: TransportType,
-    pub address: String,
-    pub reconnection_strategy: Option<Arc<dyn ReconnectionStrategy>>,
-    pub enabled: bool,
-    pub metadata: HashMap<String, String>,
-}
-```
-
-#### 2. TransportEventHandler
-Trait for receiving transport lifecycle events:
+#### 1. TransportEventHandler Trait
 
 ```rust
 pub trait TransportEventHandler: Send + Sync {
@@ -84,27 +39,131 @@ pub trait TransportEventHandler: Send + Sync {
 }
 ```
 
-#### 3. TransportListener
-Trait for transport listeners (servers):
+**Purpose:** Allows the endpoint to respond to transport lifecycle events.
+
+**Design Rationale:**
+- Synchronous callbacks for simplicity (async can be spawned inside)
+- Returns `Result<bool, String>` for channel requests to allow accept/reject decisions
+- Separate methods for different event types for clarity
+
+#### 2. TransportListener Trait
 
 ```rust
+#[async_trait::async_trait]
 pub trait TransportListener: Send + Sync {
-    async fn accept(&self) -> Result<Box<dyn Transport>, TransportError>;
+    type Transport: Transport;
+    
+    async fn accept(&self) -> Result<Self::Transport, TransportError>;
     fn local_addr(&self) -> Result<String, TransportError>;
     async fn shutdown(&self) -> Result<(), TransportError>;
 }
 ```
 
-#### 4. Enhanced TransportManager
-Manages all transports:
+**Purpose:** Abstracts server-side transport acceptance.
+
+**Design Rationale:**
+- Associated type `Transport` for type safety (not `Box<dyn Transport>` due to object safety)
+- Async `accept()` for non-blocking operation
+- Synchronous `local_addr()` as it's typically a simple getter
+- Async `shutdown()` for graceful cleanup
+
+#### 3. CallerTransport Struct
+
+```rust
+pub struct CallerTransport {
+    name: String,
+    config: TransportConfig,
+    state: Arc<RwLock<CallerState>>,
+    reconnection_task: Arc<RwLock<Option<JoinHandle<()>>>>,
+}
+
+pub enum CallerState {
+    Disconnected,
+    Connecting,
+    Connected(TransportId),
+    Reconnecting { attempt: u32, last_error: String },
+    Disabled,
+}
+```
+
+**Purpose:** Manages client-side transport with automatic reconnection.
+
+**Design Rationale:**
+- Separate state enum for clear state machine
+- `Arc<RwLock<>>` for shared mutable state across tasks
+- Optional reconnection task handle for lifecycle management
+- Name-based identification for user-friendly API
+
+#### 4. TransportConnection Struct
+
+```rust
+pub struct TransportConnection {
+    transport_id: TransportId,
+    transport_type: TransportType,
+    caller_name: Option<String>,
+    connected_at: std::time::Instant,
+}
+```
+
+**Purpose:** Tracks metadata about active connections.
+
+**Design Rationale:**
+- Distinguishes client (has `caller_name`) from server (no `caller_name`) connections
+- Tracks connection time for metrics and debugging
+- Immutable after creation for simplicity
+
+### Enhanced TransportManager
+
+The enhanced `TransportManager` will have:
 
 ```rust
 pub struct TransportManager {
+    // Listener transports (servers)
     listeners: Arc<RwLock<HashMap<String, Box<dyn TransportListener>>>>,
+    
+    // Caller transports (clients)
     callers: Arc<RwLock<HashMap<String, CallerTransport>>>,
+    
+    // Active connections
     connections: Arc<RwLock<HashMap<TransportId, TransportConnection>>>,
+    
+    // Event handler
     event_handler: Option<Arc<dyn TransportEventHandler>>,
-    reconnection_strategies: HashMap<String, Arc<dyn ReconnectionStrategy>>,
+    
+    // Existing fields...
+    next_id: AtomicU64,
+}
+```
+
+**Key Methods:**
+- `add_listener(name, config)` - Add a server transport
+- `add_caller(name, config)` - Add a client transport with reconnection
+- `remove_listener(name)` - Remove a server transport
+- `remove_caller(name)` - Remove a client transport
+- `enable_transport(name)` - Enable a transport
+- `disable_transport(name)` - Disable a transport
+- `connect_caller(name)` - Manually trigger connection
+- `set_event_handler(handler)` - Set lifecycle event handler
+
+### Integration with Endpoint
+
+The `Endpoint` will implement `TransportEventHandler`:
+
+```rust
+impl<S: Serializer> TransportEventHandler for Endpoint<S> {
+    fn on_transport_connected(&self, transport_id: TransportId) {
+        // Spawn system message handler
+        // Initialize channels for this transport
+    }
+    
+    fn on_transport_disconnected(&self, transport_id: TransportId, error: Option<TransportError>) {
+        // Clean up channels
+        // Log disconnection
+    }
+    
+    fn on_new_channel_request(&self, channel_id: ChannelId, protocol: &str, transport_id: TransportId) -> Result<bool, String> {
+        // Delegate to channel_negotiator
+    }
 }
 ```
 
@@ -112,119 +171,121 @@ pub struct TransportManager {
 
 ### Positive
 
-1. **Multi-Transport Support**: Can run multiple listeners and callers simultaneously
-2. **Automatic Reconnection**: Centralized reconnection management with pluggable strategies
-3. **Better Separation**: Transport concerns separated from protocol/channel logic
-4. **Extensibility**: Easy to add new transport types (WebSocket, QUIC, etc.)
-5. **Observability**: Event callbacks enable monitoring and metrics
-6. **Flexibility**: Dynamic enable/disable of transports
-7. **Testability**: Easier to test transport logic in isolation
+1. **Multiple Transports**: Endpoints can use TCP, TLS, WebSocket, etc. simultaneously
+2. **Automatic Reconnection**: Built-in reconnection for client transports
+3. **Dynamic Management**: Enable/disable transports at runtime
+4. **Better Observability**: Centralized lifecycle events
+5. **Cleaner Separation**: Transport management separated from endpoint logic
+6. **Extensibility**: Easy to add new transport types
 
 ### Negative
 
-1. **Breaking Changes**: Requires API migration from v0.1.0
-2. **Complexity**: More moving parts to understand and maintain
-3. **Migration Effort**: All examples and documentation need updates
-4. **Learning Curve**: Users need to understand new configuration model
+1. **Breaking Changes**: API changes from v0.1.0 (mitigated with shims)
+2. **Increased Complexity**: More types and abstractions to understand
+3. **Migration Effort**: Users must update their code
+4. **Performance Overhead**: Additional indirection and state tracking (minimal)
 
 ### Neutral
 
-1. **Performance**: Should be similar or better (more efficient connection management)
-2. **Memory**: Slightly higher due to additional tracking structures
-3. **Code Size**: Larger codebase but better organized
+1. **Learning Curve**: New concepts for users to learn
+2. **Documentation Burden**: More comprehensive docs needed
+3. **Testing Complexity**: More scenarios to test
 
-## Implementation Strategy
+## Implementation Plan
 
-### Phase 1: Foundation (Non-Breaking)
-- Add new types and traits alongside existing code
-- No changes to existing Endpoint API
-- Comprehensive unit tests
+See [Transport Manager Enhancement Plan](../dev/transport-manager-enhancement-plan.md) for detailed phased implementation.
 
-### Phase 2: Integration
-- Refactor TransportManager internals
-- Update Endpoint to use enhanced TransportManager
-- Maintain backward compatibility with shims
-
-### Phase 3: Migration
-- Add deprecation warnings to old methods
-- Provide migration guide and examples
-- Update all documentation
-
-### Phase 4: Cleanup (v1.0.0)
-- Remove deprecated methods
-- Finalize API
+**Phase 1 (Complete):** Foundation types and traits
+**Phase 2:** Enhanced TransportManager core
+**Phase 3:** Reconnection integration
+**Phase 4:** Endpoint integration
+**Phase 5:** EndpointBuilder enhancement
+**Phase 6:** Examples and documentation
+**Phase 7:** Testing and hardening
+**Phase 8:** Migration tools and release
 
 ## Alternatives Considered
 
 ### Alternative 1: Keep Current Architecture
-**Rejected**: Doesn't solve multi-transport or reconnection problems. Would require ad-hoc solutions for each use case.
 
-### Alternative 2: Separate Transport Service
-**Rejected**: Too much indirection. Transport management is core to RPC functionality and should be integrated.
+**Pros:**
+- No breaking changes
+- Simpler to maintain
 
-### Alternative 3: Plugin-Based Transport System
-**Rejected**: Over-engineered for current needs. Can be added later if needed.
+**Cons:**
+- Doesn't address limitations
+- Users must implement reconnection themselves
+- No multi-transport support
 
-### Alternative 4: Configuration-Only Approach
-**Rejected**: Not flexible enough for dynamic transport management. Need programmatic control.
+**Decision:** Rejected - doesn't meet v0.2.0 goals
 
-## Migration Path
+### Alternative 2: Separate TransportManager Library
 
-### v0.1.0 → v0.2.0
+**Pros:**
+- Could be used by other projects
+- Clear separation of concerns
 
-**Old API (deprecated but working):**
+**Cons:**
+- Additional maintenance burden
+- Overkill for current needs
+- Harder to integrate tightly with BDRPC
+
+**Decision:** Rejected - premature abstraction
+
+### Alternative 3: Event-Driven Architecture with Channels
+
+**Pros:**
+- More Rust-idiomatic
+- Better decoupling
+
+**Cons:**
+- More complex implementation
+- Harder to reason about
+- Performance overhead of channels
+
+**Decision:** Rejected - callbacks are simpler and sufficient
+
+## Migration Strategy
+
+### Backward Compatibility Shims
+
+Provide deprecated methods that map to new API:
+
 ```rust
-let mut endpoint = Endpoint::new(serializer, config);
-let conn = endpoint.connect("127.0.0.1:8080").await?;
-```
-
-**New API:**
-```rust
-let endpoint = EndpointBuilder::client(serializer)
-    .with_tcp_caller("main", "127.0.0.1:8080")
-    .with_caller("UserService", 1)
-    .build()
-    .await?;
-let conn = endpoint.connect_transport("main").await?;
-```
-
-### Compatibility Shims
-
-Provide shims for one release cycle:
-```rust
-#[deprecated(since = "0.2.0", note = "Use add_caller and connect_transport")]
+#[deprecated(since = "0.2.0", note = "Use add_caller and connect_transport instead")]
 pub async fn connect(&mut self, addr: impl ToString) -> Result<Connection, EndpointError> {
     // Create temporary caller transport
     // Connect and return
 }
 ```
 
-## Success Metrics
+### Migration Guide
 
-1. **Functionality**: All existing tests pass with new implementation
-2. **Performance**: No regression in throughput or latency
-3. **Adoption**: Migration guide enables smooth transition
-4. **Extensibility**: New transport types can be added easily
-5. **Reliability**: Reconnection works reliably under various failure scenarios
+Provide comprehensive guide with examples:
+- Before/after code samples
+- Common patterns
+- Troubleshooting
+
+### Deprecation Timeline
+
+- v0.2.0: Deprecation warnings, shims provided
+- v0.3.0: Shims still available but marked for removal
+- v1.0.0: Shims removed, new API only
 
 ## References
 
 - [Transport Manager Enhancement Plan](../dev/transport-manager-enhancement-plan.md)
-- [ADR-001: Core Architecture](ADR-001-core-architecture.md)
-- [ADR-002: Reconnection Strategy](ADR-002-reconnection-strategy.md)
 - [ADR-012: Channel-Transport Coupling](ADR-012-channel-transport-coupling.md)
+- [Post-v0.1.0 Roadmap](../dev/post-v0.1.0-roadmap.md)
 
 ## Notes
 
-This ADR represents a significant architectural evolution of BDRPC. The enhanced Transport Manager will enable:
-- Production-ready multi-transport deployments
-- Reliable automatic reconnection
-- Better separation of concerns
-- Foundation for future transport types (WebSocket, QUIC, etc.)
-
-The phased implementation approach ensures we can develop incrementally while maintaining a single coordinated release to minimize disruption.
+- Phase 1 completed 2026-02-07
+- All foundation types implemented and tested
+- 7 unit tests passing for new types
+- Ready to proceed to Phase 2
 
 ---
 
-**Approved By**: Development Team  
-**Implementation**: See [Transport Manager Enhancement Plan](../dev/transport-manager-enhancement-plan.md)
+**Last Updated:** 2026-02-07  
+**Next Review:** Start of Phase 2
