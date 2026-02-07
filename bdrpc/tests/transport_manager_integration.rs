@@ -24,8 +24,8 @@
 //! - Multiple simultaneous transports
 
 use bdrpc::channel::Protocol;
-use bdrpc::endpoint::{EndpointBuilder, EndpointConfig};
-use bdrpc::reconnection::{CircuitBreaker, ExponentialBackoff, FixedDelay, ReconnectionStrategy};
+use bdrpc::endpoint::EndpointBuilder;
+use bdrpc::reconnection::{CircuitBreaker, ExponentialBackoff, FixedDelay};
 use bdrpc::serialization::PostcardSerializer;
 use bdrpc::transport::{TcpTransport, TransportConfig, TransportType};
 use serde::{Deserialize, Serialize};
@@ -122,11 +122,8 @@ async fn test_tcp_caller_with_reconnection() {
         .expect("Failed to build client");
 
     // Try to connect
-    let result = tokio::time::timeout(
-        Duration::from_secs(2),
-        client.connect_transport("server"),
-    )
-    .await;
+    let result =
+        tokio::time::timeout(Duration::from_secs(2), client.connect_transport("server")).await;
 
     // Connection should succeed or timeout
     assert!(result.is_ok() || result.is_err());
@@ -138,7 +135,7 @@ async fn test_tcp_caller_with_reconnection() {
 #[tokio::test]
 async fn test_reconnection_exponential_backoff() {
     use bdrpc::reconnection::ReconnectionStrategy;
-    
+
     let strategy = ExponentialBackoff::builder()
         .initial_delay(Duration::from_millis(10))
         .max_delay(Duration::from_millis(100))
@@ -166,7 +163,7 @@ async fn test_reconnection_exponential_backoff() {
 #[tokio::test]
 async fn test_reconnection_circuit_breaker() {
     use bdrpc::reconnection::ReconnectionStrategy;
-    
+
     let strategy = CircuitBreaker::builder()
         .failure_threshold(3)
         .timeout(Duration::from_millis(100))
@@ -185,7 +182,7 @@ async fn test_reconnection_circuit_breaker() {
 #[tokio::test]
 async fn test_reconnection_fixed_delay() {
     use bdrpc::reconnection::ReconnectionStrategy;
-    
+
     let strategy = FixedDelay::builder()
         .delay(Duration::from_millis(50))
         .max_attempts(Some(5))
@@ -205,7 +202,10 @@ async fn test_transport_custom_metadata() {
         .with_metadata("region", "us-west")
         .with_metadata("priority", "high");
 
-    assert_eq!(config.metadata().get("region"), Some(&"us-west".to_string()));
+    assert_eq!(
+        config.metadata().get("region"),
+        Some(&"us-west".to_string())
+    );
     assert_eq!(config.metadata().get("priority"), Some(&"high".to_string()));
 }
 
@@ -298,17 +298,11 @@ async fn test_multiple_callers() {
         .expect("Failed to build client");
 
     // Try to connect to both servers
-    let result1 = tokio::time::timeout(
-        Duration::from_secs(1),
-        client.connect_transport("server1"),
-    )
-    .await;
+    let result1 =
+        tokio::time::timeout(Duration::from_secs(1), client.connect_transport("server1")).await;
 
-    let result2 = tokio::time::timeout(
-        Duration::from_secs(1),
-        client.connect_transport("server2"),
-    )
-    .await;
+    let result2 =
+        tokio::time::timeout(Duration::from_secs(1), client.connect_transport("server2")).await;
 
     // At least one should succeed or timeout gracefully
     assert!(result1.is_ok() || result1.is_err());
@@ -360,11 +354,8 @@ async fn test_transport_failover() {
     let _result1 = client.connect_transport("primary").await;
 
     // Try backup (should work)
-    let result2 = tokio::time::timeout(
-        Duration::from_secs(1),
-        client.connect_transport("backup"),
-    )
-    .await;
+    let result2 =
+        tokio::time::timeout(Duration::from_secs(1), client.connect_transport("backup")).await;
 
     assert!(result2.is_ok() || result2.is_err());
 
@@ -429,7 +420,7 @@ async fn test_tls_transport_configuration() {
     // Note: TlsConfig is an enum (Client/Server), not a struct with default()
     // This test verifies the API is available by creating a client config
     let result = TlsConfig::client_default("example.com");
-    
+
     // Should succeed or fail with a proper error
     assert!(result.is_ok() || result.is_err());
 }

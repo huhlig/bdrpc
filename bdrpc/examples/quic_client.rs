@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "127.0.0.1:4433";
     println!("Connecting to {}...", addr);
     let mut transport = QuicTransport::connect(addr, config).await?;
-    
+
     let metadata = transport.metadata();
     println!("✓ Connected!");
     println!("  Transport ID: {}", metadata.id);
@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (i, message) in test_messages.iter().enumerate() {
         println!("[Message {}] Sending: {}", i + 1, message);
-        
+
         // Send message
         transport.write_all(message.as_bytes()).await?;
         println!("[Message {}] Sent {} bytes", i + 1, message.len());
@@ -79,9 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut buffer = vec![0u8; 4096];
         let n = transport.read(&mut buffer).await?;
         let response = String::from_utf8_lossy(&buffer[..n]);
-        
+
         println!("[Message {}] Received: {}", i + 1, response.trim());
-        
+
         // Verify echo
         if response.trim() == *message {
             println!("[Message {}] ✓ Echo verified!", i + 1);
@@ -96,12 +96,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("All messages sent and verified!");
     println!("Closing connection...");
-    
+
     // Graceful shutdown
     Transport::shutdown(&mut transport).await?;
-    
+
     println!("✓ Connection closed");
-    
+
     Ok(())
 }
 

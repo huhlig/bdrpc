@@ -46,7 +46,10 @@ async fn test_websocket_basic_connection() {
 
     // Spawn server task
     let server_handle = tokio::spawn(async move {
-        let mut transport = listener.accept().await.expect("Failed to accept connection");
+        let mut transport = listener
+            .accept()
+            .await
+            .expect("Failed to accept connection");
 
         // Echo received data
         let mut buf = vec![0u8; 1024];
@@ -68,10 +71,7 @@ async fn test_websocket_basic_connection() {
 
     // Send test data
     let test_data = b"Hello, WebSocket!";
-    client
-        .write_all(test_data)
-        .await
-        .expect("Failed to write");
+    client.write_all(test_data).await.expect("Failed to write");
 
     // Receive echo
     let mut buf = vec![0u8; 1024];
@@ -118,10 +118,7 @@ async fn test_websocket_large_messages() {
 
     // Send 1 MB of data
     let test_data = vec![0x42u8; 1024 * 1024];
-    client
-        .write_all(&test_data)
-        .await
-        .expect("Failed to write");
+    client.write_all(&test_data).await.expect("Failed to write");
 
     // Receive echo
     let mut buf = vec![0u8; 2 * 1024 * 1024];
@@ -226,8 +223,8 @@ async fn test_websocket_connection_timeout() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_websocket_custom_config() {
     let config = WebSocketConfig {
-        max_frame_size: 8 * 1024,      // 8 KB frames
-        max_message_size: 32 * 1024,   // 32 KB messages
+        max_frame_size: 8 * 1024,    // 8 KB frames
+        max_message_size: 32 * 1024, // 32 KB messages
         compression: false,
         ping_interval: Duration::from_secs(10),
         pong_timeout: Duration::from_secs(5),
@@ -258,10 +255,7 @@ async fn test_websocket_custom_config() {
         .expect("Failed to connect");
 
     let test_data = b"Custom config test";
-    client
-        .write_all(test_data)
-        .await
-        .expect("Failed to write");
+    client.write_all(test_data).await.expect("Failed to write");
 
     let mut buf = vec![0u8; 1024];
     let n = client.read(&mut buf).await.expect("Failed to read");
@@ -362,7 +356,7 @@ async fn test_websocket_binary_patterns() {
 
     let server_handle = tokio::spawn(async move {
         let mut transport = listener.accept().await.expect("Failed to accept");
-        
+
         // Echo 4 messages (one for each pattern)
         for _ in 0..4 {
             let mut buf = vec![0u8; 1024];
@@ -388,17 +382,14 @@ async fn test_websocket_binary_patterns() {
 
     // Test various binary patterns
     let patterns = vec![
-        vec![0x00; 100],           // All zeros
-        vec![0xFF; 100],           // All ones
+        vec![0x00; 100],                // All zeros
+        vec![0xFF; 100],                // All ones
         (0..=255).collect::<Vec<u8>>(), // Sequential bytes
-        vec![0xAA, 0x55].repeat(50), // Alternating pattern
+        vec![0xAA, 0x55].repeat(50),    // Alternating pattern
     ];
 
     for pattern in patterns {
-        client
-            .write_all(&pattern)
-            .await
-            .expect("Failed to write");
+        client.write_all(&pattern).await.expect("Failed to write");
 
         let mut buf = vec![0u8; 1024];
         let n = client.read(&mut buf).await.expect("Failed to read");

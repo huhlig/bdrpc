@@ -48,7 +48,7 @@ use bdrpc::transport::{Transport, WebSocketConfig, WebSocketTransport};
 #[cfg(feature = "websocket")]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(feature = "websocket")]
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 #[cfg(feature = "websocket")]
 #[tokio::main]
@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Peer address: {:?}", metadata.peer_addr);
 
     // Send a series of test messages
-    let messages = vec![
+    let messages = [
         "Hello, WebSocket server!",
         "This is message #2",
         "Testing binary transport",
@@ -116,7 +116,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if n == large_message.len() {
         println!("✓ Large message verified");
     } else {
-        println!("✗ Large message size mismatch: expected {}, got {}", large_message.len(), n);
+        println!(
+            "✗ Large message size mismatch: expected {}, got {}",
+            large_message.len(),
+            n
+        );
     }
 
     // Graceful shutdown

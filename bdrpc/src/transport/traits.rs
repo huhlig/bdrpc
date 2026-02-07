@@ -264,7 +264,13 @@ pub trait Transport: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static {
     /// ```
     fn shutdown(
         &mut self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), crate::transport::TransportError>> + Send + '_>>;
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), crate::transport::TransportError>>
+                + Send
+                + '_,
+        >,
+    >;
 
     /// Splits the transport into separate read and write halves.
     ///

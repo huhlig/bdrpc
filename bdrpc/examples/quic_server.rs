@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(mut transport) => {
                 connection_count += 1;
                 let conn_id = connection_count;
-                
+
                 let metadata = transport.metadata();
                 println!(
                     "[Connection #{}] Accepted from {:?}",
@@ -86,7 +86,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let received = String::from_utf8_lossy(&buffer[..n]);
                                 println!(
                                     "[Connection #{}] Message #{}: {} ({} bytes)",
-                                    conn_id, message_count, received.trim(), n
+                                    conn_id,
+                                    message_count,
+                                    received.trim(),
+                                    n
                                 );
 
                                 // Echo back

@@ -60,19 +60,19 @@
 //! # }
 //! ```
 
-use crate::transport::{Transport, TransportError, TransportMetadata, TransportId};
+use crate::transport::{Transport, TransportError, TransportId, TransportMetadata};
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio_tungstenite::{
-    accept_async, connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream,
+    MaybeTlsStream, WebSocketStream, accept_async, connect_async, tungstenite::Message,
 };
 
 /// Configuration for WebSocket transport.
@@ -109,9 +109,9 @@ pub struct WebSocketConfig {
 impl Default for WebSocketConfig {
     fn default() -> Self {
         Self {
-            max_frame_size: 16 * 1024 * 1024,      // 16 MB
-            max_message_size: 64 * 1024 * 1024,    // 64 MB
-            compression: false,                     // Disabled for performance
+            max_frame_size: 16 * 1024 * 1024,   // 16 MB
+            max_message_size: 64 * 1024 * 1024, // 64 MB
+            compression: false,                 // Disabled for performance
             ping_interval: Duration::from_secs(30),
             pong_timeout: Duration::from_secs(10),
             accept_unmasked_frames: false,
@@ -176,25 +176,17 @@ impl WebSocketTransport {
     pub async fn connect(url: &str, config: WebSocketConfig) -> Result<Self, TransportError> {
         let (ws_stream, _) = connect_async(url)
             .await
-            .map_err(|e| TransportError::WebSocket(e))?;
+            .map_err(TransportError::WebSocket)?;
 
         // Extract peer address if available
         // Note: MaybeTlsStream only exposes Plain and NativeTls variants in tokio-tungstenite 0.21
         let peer_addr = match ws_stream.get_ref() {
             MaybeTlsStream::Plain(stream) => stream.peer_addr().ok(),
-            #[cfg(feature = "native-tls")]
-            MaybeTlsStream::NativeTls(stream) => stream.get_ref().peer_addr().ok(),
-            #[cfg(all(feature = "rustls-tls-native-roots", not(feature = "native-tls")))]
-            MaybeTlsStream::Rustls(stream) => stream.get_ref().0.peer_addr().ok(),
             _ => None,
         };
 
         let local_addr = match ws_stream.get_ref() {
             MaybeTlsStream::Plain(stream) => stream.local_addr().ok(),
-            #[cfg(feature = "native-tls")]
-            MaybeTlsStream::NativeTls(stream) => stream.get_ref().local_addr().ok(),
-            #[cfg(all(feature = "rustls-tls-native-roots", not(feature = "native-tls")))]
-            MaybeTlsStream::Rustls(stream) => stream.get_ref().0.local_addr().ok(),
             _ => None,
         };
 
@@ -230,7 +222,7 @@ impl WebSocketTransport {
 
         let ws_stream = accept_async(MaybeTlsStream::Plain(stream))
             .await
-            .map_err(|e| TransportError::WebSocket(e))?;
+            .map_err(TransportError::WebSocket)?;
 
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let id = TransportId::new(NEXT_ID.fetch_add(1, Ordering::Relaxed));
@@ -252,6 +244,32 @@ impl WebSocketTransport {
         })
     }
 
+    /// Get the WebSocket configuration.
+    ///
+    /// Returns a reference to the configuration used by this transport.
+    /// This can be useful for inspecting settings like frame sizes,
+    /// compression, and keepalive intervals.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::transport::{WebSocketTransport, WebSocketConfig};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let transport = WebSocketTransport::connect(
+    ///     "ws://localhost:8080",
+    ///     WebSocketConfig::default()
+    /// ).await?;
+    ///
+    /// let config = transport.config();
+    /// println!("Max frame size: {}", config.max_frame_size);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn config(&self) -> &WebSocketConfig {
+        &self.config
+    }
+
     /// Handle incoming WebSocket messages and extract binary data.
     async fn read_message(&self) -> Result<Vec<u8>, TransportError> {
         let mut stream = self.stream.lock().await;
@@ -266,7 +284,7 @@ impl WebSocketTransport {
                     stream
                         .send(Message::Pong(data))
                         .await
-                        .map_err(|e| TransportError::WebSocket(e))?;
+                        .map_err(TransportError::WebSocket)?;
                 }
                 Some(Ok(Message::Pong(_))) => {
                     // Ignore pong messages
@@ -315,7 +333,7 @@ impl Transport for WebSocketTransport {
             stream
                 .close(None)
                 .await
-                .map_err(|e| TransportError::WebSocket(e))?;
+                .map_err(TransportError::WebSocket)?;
             Ok(())
         })
     }
@@ -324,7 +342,7 @@ impl Transport for WebSocketTransport {
 impl AsyncRead for WebSocketTransport {
     fn poll_read(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let this = self.get_mut();
@@ -371,10 +389,7 @@ impl AsyncRead for WebSocketTransport {
 
                         Ok(())
                     }
-                    Err(e) => Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    )),
+                    Err(e) => Err(std::io::Error::other(e.to_string())),
                 }
             })
         });
@@ -386,7 +401,7 @@ impl AsyncRead for WebSocketTransport {
 impl AsyncWrite for WebSocketTransport {
     fn poll_write(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
         let this = self.get_mut();
@@ -398,7 +413,7 @@ impl AsyncWrite for WebSocketTransport {
                 stream
                     .send(Message::Binary(buf.to_vec()))
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
                 Ok(len)
             })
         });
@@ -406,7 +421,7 @@ impl AsyncWrite for WebSocketTransport {
         Poll::Ready(result)
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.get_mut();
 
         let result = tokio::task::block_in_place(|| {
@@ -415,14 +430,14 @@ impl AsyncWrite for WebSocketTransport {
                 stream
                     .flush()
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                    .map_err(|e| std::io::Error::other(e.to_string()))
             })
         });
 
         Poll::Ready(result)
     }
 
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.get_mut();
 
         let result = tokio::task::block_in_place(|| {
@@ -431,7 +446,7 @@ impl AsyncWrite for WebSocketTransport {
                 stream
                     .close(None)
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                    .map_err(|e| std::io::Error::other(e.to_string()))
             })
         });
 
@@ -473,14 +488,18 @@ impl WebSocketListener {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn bind(addr: impl Into<String>, config: WebSocketConfig) -> Result<Self, TransportError> {
+    pub async fn bind(
+        addr: impl Into<String>,
+        config: WebSocketConfig,
+    ) -> Result<Self, TransportError> {
         let addr_str = addr.into();
-        let listener = TcpListener::bind(&addr_str)
-            .await
-            .map_err(|e| TransportError::BindFailed {
-                address: addr_str,
-                source: e,
-            })?;
+        let listener =
+            TcpListener::bind(&addr_str)
+                .await
+                .map_err(|e| TransportError::BindFailed {
+                    address: addr_str,
+                    source: e,
+                })?;
 
         Ok(Self { listener, config })
     }
@@ -524,6 +543,7 @@ impl WebSocketListener {
     }
 
     /// Returns the local address this listener is bound to.
+    #[allow(clippy::result_large_err)]
     pub fn local_addr(&self) -> Result<SocketAddr, TransportError> {
         self.listener
             .local_addr()

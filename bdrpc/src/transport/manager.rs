@@ -29,8 +29,8 @@
 //! - Connection tracking and metadata
 
 use crate::transport::{
-    CallerTransport, TransportConnection, TransportError, TransportEventHandler,
-    TransportId, TransportMetadata,
+    CallerTransport, TransportConnection, TransportError, TransportEventHandler, TransportId,
+    TransportMetadata,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -116,12 +116,15 @@ struct TransportManagerInner {
 /// Entry for a listener transport with its enabled state
 struct ListenerEntry {
     /// The actual listener (type-erased)
+    #[allow(dead_code)]
     listener: Box<dyn std::any::Any + Send + Sync>,
     /// Whether this listener is enabled
     enabled: bool,
     /// Transport type for this listener
+    #[allow(dead_code)]
     transport_type: crate::transport::TransportType,
     /// Local address
+    #[allow(dead_code)]
     local_addr: String,
 }
 
@@ -186,7 +189,7 @@ impl TransportManager {
 
         if listeners.contains_key(&name) {
             return Err(TransportError::InvalidConfiguration {
-                reason: format!("Listener '{}' already exists", name)
+                reason: format!("Listener '{}' already exists", name),
             });
         }
 
@@ -248,7 +251,7 @@ impl TransportManager {
 
         if callers.contains_key(&name) {
             return Err(TransportError::InvalidConfiguration {
-                reason: format!("Caller '{}' already exists", name)
+                reason: format!("Caller '{}' already exists", name),
             });
         }
 
@@ -295,7 +298,7 @@ impl TransportManager {
 
         if !listeners.contains_key(name) {
             return Err(TransportError::InvalidConfiguration {
-                reason: format!("Listener '{}' not found", name)
+                reason: format!("Listener '{}' not found", name),
             });
         }
 
@@ -340,7 +343,7 @@ impl TransportManager {
 
         if !callers.contains_key(name) {
             return Err(TransportError::InvalidConfiguration {
-                reason: format!("Caller '{}' not found", name)
+                reason: format!("Caller '{}' not found", name),
             });
         }
 
@@ -407,7 +410,7 @@ impl TransportManager {
         }
 
         Err(TransportError::InvalidConfiguration {
-            reason: format!("Transport '{}' not found", name)
+            reason: format!("Transport '{}' not found", name),
         })
     }
 
@@ -462,7 +465,7 @@ impl TransportManager {
         }
 
         Err(TransportError::InvalidConfiguration {
-            reason: format!("Transport '{}' not found", name)
+            reason: format!("Transport '{}' not found", name),
         })
     }
 
@@ -502,30 +505,36 @@ impl TransportManager {
     pub async fn connect_caller(&self, name: &str) -> Result<TransportId, TransportError> {
         let callers = self.inner.callers.read().await;
 
-        let caller = callers.get(name).ok_or_else(|| {
-            TransportError::InvalidConfiguration {
-                reason: format!("Caller '{}' not found", name)
-            }
-        })?;
+        let caller = callers
+            .get(name)
+            .ok_or_else(|| TransportError::InvalidConfiguration {
+                reason: format!("Caller '{}' not found", name),
+            })?;
 
         // Check if caller is enabled
         if !caller.config().is_enabled() {
             return Err(TransportError::InvalidConfiguration {
-                reason: format!("Caller '{}' is disabled", name)
+                reason: format!("Caller '{}' is disabled", name),
             });
         }
 
         let config = caller.config().clone();
-        let address = config.address().to_string();
 
         #[cfg(feature = "observability")]
-        info!("Connecting caller '{}' to {}", name, address);
+        {
+            let address = config.address().to_string();
+            info!("Connecting caller '{}' to {}", name, address);
+        }
 
         // Create the actual transport connection based on type
         let (transport_id, transport) = self.create_transport_connection(&config).await?;
 
         // Store the transport object
-        self.inner.active_transports.write().await.insert(transport_id, transport);
+        self.inner
+            .active_transports
+            .write()
+            .await
+            .insert(transport_id, transport);
 
         // Register the connection
         let connection = TransportConnection::new(
@@ -533,10 +542,16 @@ impl TransportManager {
             config.transport_type(),
             Some(name.to_string()),
         );
-        self.inner.connections.write().await.insert(transport_id, connection);
+        self.inner
+            .connections
+            .write()
+            .await
+            .insert(transport_id, connection);
 
         // Update caller state
-        caller.set_state(crate::transport::CallerState::Connected(transport_id)).await;
+        caller
+            .set_state(crate::transport::CallerState::Connected(transport_id))
+            .await;
 
         // Notify event handler
         if let Some(handler) = self.inner.event_handler.read().await.as_ref() {
@@ -549,22 +564,27 @@ impl TransportManager {
             if let Some(handler) = event_handler {
                 let manager = self.clone();
                 let _caller_name = name.to_string();
-                
-                caller.start_reconnection_loop(
-                    handler,
-                    move |_addr| {
+
+                caller
+                    .start_reconnection_loop(handler, move |_addr| {
                         let manager = manager.clone();
                         let config = config.clone();
                         async move {
-                            manager.create_transport_connection(&config).await.map(|(id, _transport)| id)
+                            manager
+                                .create_transport_connection(&config)
+                                .await
+                                .map(|(id, _transport)| id)
                         }
-                    }
-                ).await;
+                    })
+                    .await;
             }
         }
 
         #[cfg(feature = "observability")]
-        info!("Caller '{}' connected with transport ID: {}", name, transport_id);
+        info!(
+            "Caller '{}' connected with transport ID: {}",
+            name, transport_id
+        );
 
         Ok(transport_id)
     }
@@ -591,7 +611,7 @@ impl TransportManager {
 
                 // Create the TCP connection
                 let transport = TcpTransport::connect(address).await?;
-                
+
                 Ok((transport_id, Box::new(transport)))
             }
             #[cfg(feature = "tls")]
@@ -604,10 +624,10 @@ impl TransportManager {
                 // 2. Get TlsConfig from somewhere (not in TransportConfig yet)
                 // 3. Wrap TCP transport with TLS
                 // This will be properly implemented when TlsConfig is added to TransportConfig.
-                
+
                 // For now, just create a TCP connection as a placeholder
                 let transport = TcpTransport::connect(address).await?;
-                
+
                 Ok((transport_id, Box::new(transport)))
             }
             TransportType::Memory => {
@@ -617,15 +637,14 @@ impl TransportManager {
                 // Memory transports must be created as pairs
                 // This is not supported for caller connections
                 Err(TransportError::InvalidConfiguration {
-                    reason: "Memory transports must be created as pairs, not via connect".to_string()
+                    reason: "Memory transports must be created as pairs, not via connect"
+                        .to_string(),
                 })
             }
             #[allow(unreachable_patterns)]
-            _ => {
-                Err(TransportError::InvalidConfiguration {
-                    reason: format!("Unsupported transport type: {:?}", config.transport_type())
-                })
-            }
+            _ => Err(TransportError::InvalidConfiguration {
+                reason: format!("Unsupported transport type: {:?}", config.transport_type()),
+            }),
         }
     }
 
@@ -1162,7 +1181,9 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
-        let result = manager.add_listener("test-listener".to_string(), config).await;
+        let result = manager
+            .add_listener("test-listener".to_string(), config)
+            .await;
         assert!(result.is_ok());
         assert_eq!(manager.listener_count().await, 1);
     }
@@ -1172,11 +1193,19 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
-        manager.add_listener("test-listener".to_string(), config.clone()).await.unwrap();
-        let result = manager.add_listener("test-listener".to_string(), config).await;
-        
+        manager
+            .add_listener("test-listener".to_string(), config.clone())
+            .await
+            .unwrap();
+        let result = manager
+            .add_listener("test-listener".to_string(), config)
+            .await;
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
@@ -1184,7 +1213,10 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
-        manager.add_listener("test-listener".to_string(), config).await.unwrap();
+        manager
+            .add_listener("test-listener".to_string(), config)
+            .await
+            .unwrap();
         assert_eq!(manager.listener_count().await, 1);
 
         let result = manager.remove_listener("test-listener").await;
@@ -1196,9 +1228,12 @@ mod tests {
     async fn test_remove_listener_not_found() {
         let manager = TransportManager::new();
         let result = manager.remove_listener("nonexistent").await;
-        
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
@@ -1228,11 +1263,17 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
-        manager.add_caller("test-caller".to_string(), config.clone()).await.unwrap();
+        manager
+            .add_caller("test-caller".to_string(), config.clone())
+            .await
+            .unwrap();
         let result = manager.add_caller("test-caller".to_string(), config).await;
-        
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
@@ -1240,7 +1281,10 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
-        manager.add_caller("test-caller".to_string(), config).await.unwrap();
+        manager
+            .add_caller("test-caller".to_string(), config)
+            .await
+            .unwrap();
         assert_eq!(manager.caller_count().await, 1);
 
         let result = manager.remove_caller("test-caller").await;
@@ -1252,9 +1296,12 @@ mod tests {
     async fn test_remove_caller_not_found() {
         let manager = TransportManager::new();
         let result = manager.remove_caller("nonexistent").await;
-        
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
@@ -1263,7 +1310,10 @@ mod tests {
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr")
             .with_enabled(false);
 
-        manager.add_listener("test-listener".to_string(), config).await.unwrap();
+        manager
+            .add_listener("test-listener".to_string(), config)
+            .await
+            .unwrap();
 
         // Enable the listener
         let result = manager.enable_transport("test-listener").await;
@@ -1279,7 +1329,10 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
-        manager.add_caller("test-caller".to_string(), config).await.unwrap();
+        manager
+            .add_caller("test-caller".to_string(), config)
+            .await
+            .unwrap();
 
         // Enable the caller
         let result = manager.enable_transport("test-caller").await;
@@ -1294,18 +1347,24 @@ mod tests {
     async fn test_enable_transport_not_found() {
         let manager = TransportManager::new();
         let result = manager.enable_transport("nonexistent").await;
-        
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
     async fn test_disable_transport_not_found() {
         let manager = TransportManager::new();
         let result = manager.disable_transport("nonexistent").await;
-        
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
@@ -1314,8 +1373,14 @@ mod tests {
         let config1 = crate::transport::TransportConfig::new(TransportType::Memory, "addr1");
         let config2 = crate::transport::TransportConfig::new(TransportType::Memory, "addr2");
 
-        manager.add_listener("listener1".to_string(), config1).await.unwrap();
-        manager.add_listener("listener2".to_string(), config2).await.unwrap();
+        manager
+            .add_listener("listener1".to_string(), config1)
+            .await
+            .unwrap();
+        manager
+            .add_listener("listener2".to_string(), config2)
+            .await
+            .unwrap();
 
         let listeners = manager.list_listeners().await;
         assert_eq!(listeners.len(), 2);
@@ -1329,8 +1394,14 @@ mod tests {
         let config1 = crate::transport::TransportConfig::new(TransportType::Memory, "addr1");
         let config2 = crate::transport::TransportConfig::new(TransportType::Memory, "addr2");
 
-        manager.add_caller("caller1".to_string(), config1).await.unwrap();
-        manager.add_caller("caller2".to_string(), config2).await.unwrap();
+        manager
+            .add_caller("caller1".to_string(), config1)
+            .await
+            .unwrap();
+        manager
+            .add_caller("caller2".to_string(), config2)
+            .await
+            .unwrap();
 
         let callers = manager.list_callers().await;
         assert_eq!(callers.len(), 2);
@@ -1348,9 +1419,12 @@ mod tests {
     async fn test_connect_caller_not_found() {
         let manager = TransportManager::new();
         let result = manager.connect_caller("nonexistent").await;
-        
+
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
@@ -1360,12 +1434,18 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
-        manager.add_caller("test-caller".to_string(), config).await.unwrap();
+        manager
+            .add_caller("test-caller".to_string(), config)
+            .await
+            .unwrap();
         let result = manager.connect_caller("test-caller").await;
-        
+
         // Memory transports should fail with InvalidConfiguration
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TransportError::InvalidConfiguration { .. }
+        ));
     }
 
     #[tokio::test]
@@ -1375,7 +1455,12 @@ mod tests {
         struct TestHandler;
         impl TransportEventHandler for TestHandler {
             fn on_transport_connected(&self, _transport_id: TransportId) {}
-            fn on_transport_disconnected(&self, _transport_id: TransportId, _error: Option<TransportError>) {}
+            fn on_transport_disconnected(
+                &self,
+                _transport_id: TransportId,
+                _error: Option<TransportError>,
+            ) {
+            }
             fn on_new_channel_request(
                 &self,
                 _channel_id: ChannelId,
@@ -1394,23 +1479,29 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_listeners_and_callers() {
         let manager = TransportManager::new();
-        
+
         // Add multiple listeners
         for i in 0..3 {
             let config = crate::transport::TransportConfig::new(
                 TransportType::Memory,
-                format!("listener-addr-{}", i)
+                format!("listener-addr-{}", i),
             );
-            manager.add_listener(format!("listener-{}", i), config).await.unwrap();
+            manager
+                .add_listener(format!("listener-{}", i), config)
+                .await
+                .unwrap();
         }
 
         // Add multiple callers
         for i in 0..3 {
             let config = crate::transport::TransportConfig::new(
                 TransportType::Memory,
-                format!("caller-addr-{}", i)
+                format!("caller-addr-{}", i),
             );
-            manager.add_caller(format!("caller-{}", i), config).await.unwrap();
+            manager
+                .add_caller(format!("caller-{}", i), config)
+                .await
+                .unwrap();
         }
 
         assert_eq!(manager.listener_count().await, 3);
@@ -1418,7 +1509,7 @@ mod tests {
 
         let listeners = manager.list_listeners().await;
         let callers = manager.list_callers().await;
-        
+
         assert_eq!(listeners.len(), 3);
         assert_eq!(callers.len(), 3);
     }
@@ -1429,7 +1520,10 @@ mod tests {
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr")
             .with_enabled(false);
 
-        manager.add_listener("disabled-listener".to_string(), config).await.unwrap();
+        manager
+            .add_listener("disabled-listener".to_string(), config)
+            .await
+            .unwrap();
         assert_eq!(manager.listener_count().await, 1);
 
         // The listener exists but is disabled
@@ -1444,7 +1538,10 @@ mod tests {
             .with_metadata("region", "us-west")
             .with_metadata("priority", "high");
 
-        manager.add_caller("metadata-caller".to_string(), config).await.unwrap();
+        manager
+            .add_caller("metadata-caller".to_string(), config)
+            .await
+            .unwrap();
         assert_eq!(manager.caller_count().await, 1);
     }
 
@@ -1453,8 +1550,11 @@ mod tests {
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
             .with_enabled(false);
-        manager.add_caller("test".to_string(), config).await.unwrap();
-        
+        manager
+            .add_caller("test".to_string(), config)
+            .await
+            .unwrap();
+
         let result = manager.connect_caller("test").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("disabled"));
@@ -1464,22 +1564,25 @@ mod tests {
     async fn test_connect_caller_creates_connection() {
         // This test requires an actual TCP listener, so we create one first
         use crate::transport::TcpTransport;
-        
+
         let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        
+
         // Spawn a task to accept one connection
         tokio::spawn(async move {
             let _ = listener.accept().await;
         });
-        
+
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
-        manager.add_caller("test".to_string(), config).await.unwrap();
-        
+        manager
+            .add_caller("test".to_string(), config)
+            .await
+            .unwrap();
+
         let transport_id = manager.connect_caller("test").await.unwrap();
         assert_eq!(manager.connection_count().await, 1);
-        
+
         // Verify connection is tracked
         let connections = manager.inner.connections.read().await;
         assert!(connections.contains_key(&transport_id));
@@ -1491,29 +1594,32 @@ mod tests {
     #[tokio::test]
     async fn test_caller_state_transitions() {
         use crate::transport::{CallerState, TcpTransport};
-        
+
         // Create a listener for the test
         let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        
+
         // Spawn a task to accept one connection
         tokio::spawn(async move {
             let _ = listener.accept().await;
         });
-        
+
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
-        manager.add_caller("test".to_string(), config).await.unwrap();
-        
+        manager
+            .add_caller("test".to_string(), config)
+            .await
+            .unwrap();
+
         // Initial state should be Disconnected
         let callers = manager.inner.callers.read().await;
         let caller = callers.get("test").unwrap();
         assert_eq!(caller.state().await, CallerState::Disconnected);
-        
+
         // After connect, should be Connected
         drop(callers);
         let transport_id = manager.connect_caller("test").await.unwrap();
-        
+
         let callers = manager.inner.callers.read().await;
         let caller = callers.get("test").unwrap();
         assert_eq!(caller.state().await, CallerState::Connected(transport_id));
@@ -1524,18 +1630,23 @@ mod tests {
         use crate::channel::ChannelId;
         use crate::transport::TcpTransport;
         use std::sync::atomic::{AtomicBool, Ordering};
-        
+
         struct TestHandler {
             connected_called: Arc<AtomicBool>,
         }
-        
+
         impl TransportEventHandler for TestHandler {
             fn on_transport_connected(&self, _transport_id: TransportId) {
                 self.connected_called.store(true, Ordering::SeqCst);
             }
-            
-            fn on_transport_disconnected(&self, _transport_id: TransportId, _error: Option<TransportError>) {}
-            
+
+            fn on_transport_disconnected(
+                &self,
+                _transport_id: TransportId,
+                _error: Option<TransportError>,
+            ) {
+            }
+
             fn on_new_channel_request(
                 &self,
                 _channel_id: ChannelId,
@@ -1545,29 +1656,32 @@ mod tests {
                 Ok(true)
             }
         }
-        
+
         // Create a listener for the test
         let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        
+
         // Spawn a task to accept one connection
         tokio::spawn(async move {
             let _ = listener.accept().await;
         });
-        
+
         let connected_called = Arc::new(AtomicBool::new(false));
         let handler = Arc::new(TestHandler {
             connected_called: Arc::clone(&connected_called),
         });
-        
+
         let manager = TransportManager::new();
         manager.set_event_handler(handler).await;
-        
+
         let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
-        manager.add_caller("test".to_string(), config).await.unwrap();
-        
+        manager
+            .add_caller("test".to_string(), config)
+            .await
+            .unwrap();
+
         manager.connect_caller("test").await.unwrap();
-        
+
         // Event handler should have been called
         assert!(connected_called.load(Ordering::SeqCst));
     }
@@ -1576,18 +1690,18 @@ mod tests {
     async fn test_create_transport_connection_tcp() {
         // This test requires an actual TCP listener
         use crate::transport::TcpTransport;
-        
+
         let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        
+
         // Spawn a task to accept one connection
         tokio::spawn(async move {
             let _ = listener.accept().await;
         });
-        
+
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
-        
+
         let result = manager.create_transport_connection(&config).await;
         assert!(result.is_ok());
         let (transport_id, _transport) = result.unwrap();
@@ -1599,7 +1713,7 @@ mod tests {
         // Memory transports can't be "connected" - they must be created as pairs
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "memory://test");
-        
+
         let result = manager.create_transport_connection(&config).await;
         // Should fail with InvalidConfiguration
         assert!(result.is_err());

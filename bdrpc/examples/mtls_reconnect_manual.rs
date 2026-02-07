@@ -255,8 +255,7 @@ async fn run_client() -> Result<(), Box<dyn Error>> {
     println!("   • Max Attempts: Unlimited\n");
 
     // Create endpoint with reconnection strategy
-    let config = EndpointConfig::default()
-        .with_reconnection_strategy(Arc::new(reconnect_strategy));
+    let config = EndpointConfig::default().with_reconnection_strategy(Arc::new(reconnect_strategy));
 
     let mut endpoint = Endpoint::new(JsonSerializer::default(), config);
 
@@ -379,7 +378,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("\n🔐 BDRPC Reconnection Example with Manual Listener\n");
         println!("Usage:");
         println!("  Server: cargo run --example mtls_reconnect_manual --features serde -- server");
-        println!("  Client: cargo run --example mtls_reconnect_manual --features serde -- client\n");
+        println!(
+            "  Client: cargo run --example mtls_reconnect_manual --features serde -- client\n"
+        );
         println!("💡 Tips:");
         println!("   • Start the server first");
         println!("   • Start the client in another terminal");

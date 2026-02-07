@@ -62,9 +62,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure WebSocket with reasonable defaults
     let config = WebSocketConfig {
-        max_frame_size: 16 * 1024 * 1024,      // 16 MB
-        max_message_size: 64 * 1024 * 1024,    // 64 MB
-        compression: false,                     // Disabled for performance
+        max_frame_size: 16 * 1024 * 1024,   // 16 MB
+        max_message_size: 64 * 1024 * 1024, // 64 MB
+        compression: false,                 // Disabled for performance
         ping_interval: std::time::Duration::from_secs(30),
         pong_timeout: std::time::Duration::from_secs(10),
         accept_unmasked_frames: false,
@@ -111,7 +111,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Handle a single WebSocket connection.
 ///
 /// This function reads messages from the client and echoes them back.
-async fn handle_connection(mut transport: impl Transport) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_connection(
+    mut transport: impl Transport,
+) -> Result<(), Box<dyn std::error::Error>> {
     let connection_id = transport.metadata().id;
     println!("Handling connection {}", connection_id);
 
@@ -125,8 +127,7 @@ async fn handle_connection(mut transport: impl Transport) -> Result<(), Box<dyn 
                 // Connection closed
                 println!(
                     "Connection {} closed after {} messages",
-                    connection_id,
-                    message_count
+                    connection_id, message_count
                 );
                 break;
             }
@@ -137,9 +138,7 @@ async fn handle_connection(mut transport: impl Transport) -> Result<(), Box<dyn 
                 let message = String::from_utf8_lossy(&buffer[..n]);
                 println!(
                     "Connection {} received ({} bytes): {}",
-                    connection_id,
-                    n,
-                    message
+                    connection_id, n, message
                 );
 
                 // Echo the message back

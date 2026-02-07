@@ -573,7 +573,11 @@ impl<S: Serializer> EndpointBuilder<S> {
     /// # }
     /// ```
     #[cfg(feature = "websocket")]
-    pub fn with_websocket_caller(mut self, name: impl Into<String>, addr: impl Into<String>) -> Self {
+    pub fn with_websocket_caller(
+        mut self,
+        name: impl Into<String>,
+        addr: impl Into<String>,
+    ) -> Self {
         let config = TransportConfig::new(TransportType::WebSocket, addr);
         self.transports.push(TransportRegistration {
             name: name.into(),
@@ -788,7 +792,9 @@ impl<S: Serializer> EndpointBuilder<S> {
                     .add_listener(transport.name, transport.config)
                     .await?;
             } else {
-                endpoint.add_caller(transport.name, transport.config).await?;
+                endpoint
+                    .add_caller(transport.name, transport.config)
+                    .await?;
             }
         }
 

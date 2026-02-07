@@ -48,7 +48,10 @@ async fn test_quic_basic_connection() {
 
     // Spawn server task
     let server_handle = tokio::spawn(async move {
-        let mut transport = listener.accept().await.expect("Failed to accept connection");
+        let mut transport = listener
+            .accept()
+            .await
+            .expect("Failed to accept connection");
 
         // Echo received data
         let mut buf = vec![0u8; 1024];
@@ -57,7 +60,7 @@ async fn test_quic_basic_connection() {
             .write_all(&buf[..n])
             .await
             .expect("Failed to write");
-        
+
         // Keep transport alive briefly to allow client to read
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
@@ -72,10 +75,7 @@ async fn test_quic_basic_connection() {
 
     // Send test data
     let test_data = b"Hello, QUIC!";
-    client
-        .write_all(test_data)
-        .await
-        .expect("Failed to write");
+    client.write_all(test_data).await.expect("Failed to write");
 
     // Receive echo
     let mut buf = vec![0u8; 1024];
@@ -106,7 +106,7 @@ async fn test_quic_large_messages() {
     let server_handle = tokio::spawn(async move {
         let mut transport = listener.accept().await.expect("Failed to accept");
         let mut buf = vec![0u8; 10 * 1024 * 1024];
-        
+
         // Read all data from client
         let mut total_read = 0;
         loop {
@@ -124,13 +124,13 @@ async fn test_quic_large_messages() {
                 }
             }
         }
-        
+
         // Echo all data back
         transport
             .write_all(&buf[..total_read])
             .await
             .expect("Failed to write");
-        
+
         // Keep transport alive longer to allow client to read all data
         tokio::time::sleep(Duration::from_secs(2)).await;
     });
@@ -143,16 +143,16 @@ async fn test_quic_large_messages() {
 
     // Send 1 MB of data
     let test_data = vec![0x42u8; 1024 * 1024];
-    client
-        .write_all(&test_data)
-        .await
-        .expect("Failed to write");
+    client.write_all(&test_data).await.expect("Failed to write");
 
     // Receive echo - read in loop until we get all data
     let mut buf = vec![0u8; 2 * 1024 * 1024];
     let mut total_read = 0;
     while total_read < test_data.len() {
-        let n = client.read(&mut buf[total_read..]).await.expect("Failed to read");
+        let n = client
+            .read(&mut buf[total_read..])
+            .await
+            .expect("Failed to read");
         if n == 0 {
             break;
         }
@@ -190,7 +190,7 @@ async fn test_quic_concurrent_connections() {
                     .write_all(&buf[..n])
                     .await
                     .expect("Failed to write");
-                
+
                 // Keep transport alive briefly to allow client to read
                 tokio::time::sleep(Duration::from_millis(100)).await;
             });
@@ -263,7 +263,7 @@ async fn test_quic_custom_config() {
         keep_alive_interval: Duration::from_secs(5),
         max_concurrent_bidi_streams: 50,
         max_concurrent_uni_streams: 50,
-        enable_0rtt: false, // Disable 0-RTT for this test
+        enable_0rtt: false,        // Disable 0-RTT for this test
         initial_window: 64 * 1024, // 64 KB
         max_udp_payload_size: 1200,
         enable_migration: false,
@@ -283,7 +283,7 @@ async fn test_quic_custom_config() {
             .write_all(&buf[..n])
             .await
             .expect("Failed to write");
-        
+
         // Keep transport alive briefly to allow client to read
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
@@ -295,10 +295,7 @@ async fn test_quic_custom_config() {
         .expect("Failed to connect");
 
     let test_data = b"Custom config test";
-    client
-        .write_all(test_data)
-        .await
-        .expect("Failed to write");
+    client.write_all(test_data).await.expect("Failed to write");
 
     let mut buf = vec![0u8; 1024];
     let n = client.read(&mut buf).await.expect("Failed to read");
@@ -327,11 +324,11 @@ async fn test_quic_metadata() {
         assert!(metadata.local_addr.is_some());
         assert!(metadata.peer_addr.is_some());
         assert!(metadata.id.as_u64() > 0);
-        
+
         // Read the data sent by client to keep stream alive
         let mut buf = vec![0u8; 1024];
         let _ = transport.read(&mut buf).await;
-        
+
         // Keep transport alive longer
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
@@ -343,7 +340,10 @@ async fn test_quic_metadata() {
         .expect("Failed to connect");
 
     // Send a small message to establish the stream
-    client.write_all(b"metadata_test").await.expect("Failed to write");
+    client
+        .write_all(b"metadata_test")
+        .await
+        .expect("Failed to write");
 
     // Check client-side metadata
     let metadata = client.metadata();
@@ -353,7 +353,7 @@ async fn test_quic_metadata() {
 
     // Wait a bit before dropping to ensure server reads
     tokio::time::sleep(Duration::from_millis(50)).await;
-    
+
     drop(client);
     server_handle.await.expect("Server failed");
 }
@@ -390,7 +390,7 @@ async fn test_quic_graceful_shutdown() {
 
     // Send a small message first to establish the stream
     client.write_all(b"test").await.expect("Failed to write");
-    
+
     // Give server time to read
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -416,7 +416,7 @@ async fn test_quic_binary_patterns() {
 
     let server_handle = tokio::spawn(async move {
         let mut transport = listener.accept().await.expect("Failed to accept");
-        
+
         // Echo 4 messages (one for each pattern)
         for _ in 0..4 {
             let mut buf = vec![0u8; 1024];
@@ -431,7 +431,7 @@ async fn test_quic_binary_patterns() {
                 Err(_) => break,
             }
         }
-        
+
         // Keep transport alive briefly
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
@@ -444,17 +444,14 @@ async fn test_quic_binary_patterns() {
 
     // Test various binary patterns
     let patterns = vec![
-        vec![0x00; 100],           // All zeros
-        vec![0xFF; 100],           // All ones
+        vec![0x00; 100],                // All zeros
+        vec![0xFF; 100],                // All ones
         (0..=255).collect::<Vec<u8>>(), // Sequential bytes
-        vec![0xAA, 0x55].repeat(50), // Alternating pattern
+        vec![0xAA, 0x55].repeat(50),    // Alternating pattern
     ];
 
     for pattern in patterns {
-        client
-            .write_all(&pattern)
-            .await
-            .expect("Failed to write");
+        client.write_all(&pattern).await.expect("Failed to write");
 
         let mut buf = vec![0u8; 1024];
         let n = client.read(&mut buf).await.expect("Failed to read");
@@ -488,7 +485,7 @@ async fn test_quic_rapid_small_messages() {
                 .await
                 .expect("Failed to write");
         }
-        
+
         // Keep transport alive briefly
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
@@ -539,7 +536,7 @@ async fn test_quic_0rtt_support() {
             .write_all(&buf[..n])
             .await
             .expect("Failed to write");
-        
+
         // Keep transport alive briefly to allow client to read
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
@@ -551,10 +548,7 @@ async fn test_quic_0rtt_support() {
         .expect("Failed to connect");
 
     let test_data = b"0-RTT test data";
-    client
-        .write_all(test_data)
-        .await
-        .expect("Failed to write");
+    client.write_all(test_data).await.expect("Failed to write");
 
     let mut buf = vec![0u8; 1024];
     let n = client.read(&mut buf).await.expect("Failed to read");
@@ -582,7 +576,7 @@ async fn test_quic_connection_migration() {
 
     let server_handle = tokio::spawn(async move {
         let mut transport = listener.accept().await.expect("Failed to accept");
-        
+
         // Handle multiple messages to test migration
         for _ in 0..3 {
             let mut buf = vec![0u8; 1024];
@@ -592,7 +586,7 @@ async fn test_quic_connection_migration() {
                 .await
                 .expect("Failed to write");
         }
-        
+
         // Keep transport alive briefly
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
@@ -615,7 +609,7 @@ async fn test_quic_connection_migration() {
         let n = client.read(&mut buf).await.expect("Failed to read");
 
         assert_eq!(&buf[..n], msg.as_bytes());
-        
+
         // Small delay between messages
         tokio::time::sleep(Duration::from_millis(50)).await;
     }

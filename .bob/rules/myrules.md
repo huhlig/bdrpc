@@ -9,3 +9,4 @@ Please ensure you always update the implementation plan with completed tasks.
 Please use all modern rust idioms and conventions including not using mod.rs files.
 When starting a new phased implementation plan, create a new branch. 
 Verify status of each completed phase, if a phase is 100% complete then commit changes to git. If a phase is not complete, and items are deferred, add those items to the next phase prior to any existing work. 
+Ensure code is clean of issues using clippy, and formatted with cargo fmt before committing.

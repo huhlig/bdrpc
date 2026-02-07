@@ -134,6 +134,7 @@ pub trait TransportListener: Send + Sync {
     async fn accept(&self) -> Result<Self::Transport, TransportError>;
 
     /// Returns the local address this listener is bound to.
+    #[allow(clippy::result_large_err)]
     fn local_addr(&self) -> Result<String, TransportError>;
 
     /// Gracefully shuts down the listener.
@@ -319,7 +320,6 @@ impl CallerTransport {
         // Stop any existing reconnection loop
         self.stop_reconnection_loop().await;
 
-        let name = self.name.clone();
         let config = self.config.clone();
         let state = Arc::clone(&self.state);
         let reconnection_task = Arc::clone(&self.reconnection_task);
@@ -328,14 +328,19 @@ impl CallerTransport {
             Some(s) => Arc::clone(s),
             None => {
                 #[cfg(feature = "observability")]
-                tracing::warn!("Caller '{}' has no reconnection strategy configured", name);
+                tracing::warn!(
+                    "Caller '{}' has no reconnection strategy configured",
+                    self.name
+                );
                 return;
             }
         };
 
         #[cfg(feature = "observability")]
-        tracing::info!("Starting reconnection loop for caller '{}'", name);
+        tracing::info!("Starting reconnection loop for caller '{}'", &self.name);
 
+        #[allow(unused_variables)]
+        let name = self.name.clone();
         let task = tokio::spawn(async move {
             let mut attempt = 0u32;
             let connect_fn = Arc::new(connect_fn);
@@ -351,7 +356,10 @@ impl CallerTransport {
                     }
                     CallerState::Connected(_) => {
                         #[cfg(feature = "observability")]
-                        tracing::debug!("Caller '{}' is already connected, waiting for disconnection", name);
+                        tracing::debug!(
+                            "Caller '{}' is already connected, waiting for disconnection",
+                            name
+                        );
                         // Wait a bit before checking again
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         continue;
@@ -363,7 +371,11 @@ impl CallerTransport {
                 *state.write().await = CallerState::Connecting;
 
                 #[cfg(feature = "observability")]
-                tracing::info!("Caller '{}' attempting connection (attempt {})", name, attempt + 1);
+                tracing::info!(
+                    "Caller '{}' attempting connection (attempt {})",
+                    name,
+                    attempt + 1
+                );
 
                 // Attempt to connect
                 let connect_result = connect_fn(config.address().to_string()).await;
@@ -371,7 +383,11 @@ impl CallerTransport {
                 match connect_result {
                     Ok(transport_id) => {
                         #[cfg(feature = "observability")]
-                        tracing::info!("Caller '{}' connected successfully with transport ID {}", name, transport_id);
+                        tracing::info!(
+                            "Caller '{}' connected successfully with transport ID {}",
+                            name,
+                            transport_id
+                        );
 
                         // Update state
                         *state.write().await = CallerState::Connected(transport_id);
@@ -394,7 +410,12 @@ impl CallerTransport {
                     }
                     Err(error) => {
                         #[cfg(feature = "observability")]
-                        tracing::warn!("Caller '{}' connection failed (attempt {}): {}", name, attempt + 1, error);
+                        tracing::warn!(
+                            "Caller '{}' connection failed (attempt {}): {}",
+                            name,
+                            attempt + 1,
+                            error
+                        );
 
                         // Notify strategy
                         strategy.on_disconnected(&error);
@@ -402,7 +423,11 @@ impl CallerTransport {
                         // Check if we should retry
                         if !strategy.should_reconnect(attempt, &error).await {
                             #[cfg(feature = "observability")]
-                            tracing::error!("Caller '{}' giving up after {} attempts", name, attempt + 1);
+                            tracing::error!(
+                                "Caller '{}' giving up after {} attempts",
+                                name,
+                                attempt + 1
+                            );
 
                             *state.write().await = CallerState::Disconnected;
                             break;
@@ -474,7 +499,10 @@ impl std::fmt::Debug for CallerTransport {
         f.debug_struct("CallerTransport")
             .field("name", &self.name)
             .field("config", &self.config)
-            .field("has_reconnection_strategy", &self.has_reconnection_strategy())
+            .field(
+                "has_reconnection_strategy",
+                &self.has_reconnection_strategy(),
+            )
             .finish()
     }
 }

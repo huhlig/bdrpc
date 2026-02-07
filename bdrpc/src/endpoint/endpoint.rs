@@ -1852,10 +1852,7 @@ impl<S: Serializer> Endpoint<S> {
 
         // Get negotiated protocols (will be populated by TransportEventHandler)
         let negotiated = self.negotiated.read().await;
-        let negotiated_protocols = negotiated
-            .get(&connection_id)
-            .cloned()
-            .unwrap_or_default();
+        let negotiated_protocols = negotiated.get(&connection_id).cloned().unwrap_or_default();
 
         Ok(Connection {
             id: connection_id,
@@ -3053,10 +3050,12 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
         #[cfg(feature = "observability")]
         tracing::info!(
             "Transport {} connected to endpoint {}",
-            transport_id, self.endpoint_id
+            transport_id,
+            self.endpoint_id
         );
 
         // Create connection ID from transport ID
+        #[allow(unused_variables)]
         let connection_id = format!("conn-{}", transport_id.as_u64());
 
         // Create the system channel for control messages
@@ -3093,7 +3092,8 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
                             #[cfg(feature = "observability")]
                             tracing::error!(
                                 "Failed to get system channel receiver for connection {}: {}",
-                                connection_id, _e
+                                connection_id,
+                                _e
                             );
                         }
                     }
@@ -3102,7 +3102,8 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
                     #[cfg(feature = "observability")]
                     tracing::error!(
                         "Failed to create system channel for connection {}: {}",
-                        connection_id, _e
+                        connection_id,
+                        _e
                     );
                 }
             }
@@ -3122,21 +3123,24 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
     fn on_transport_disconnected(
         &self,
         transport_id: crate::transport::TransportId,
-        error: Option<crate::transport::TransportError>,
+        _error: Option<crate::transport::TransportError>,
     ) {
         let connection_id = format!("conn-{}", transport_id.as_u64());
 
-        if let Some(err) = &error {
-            #[cfg(feature = "observability")]
+        #[cfg(feature = "observability")]
+        if let Some(err) = &_error {
             tracing::warn!(
                 "Transport {} disconnected from endpoint {} with error: {}",
-                transport_id, self.endpoint_id, err
+                transport_id,
+                self.endpoint_id,
+                err
             );
         } else {
             #[cfg(feature = "observability")]
             tracing::info!(
                 "Transport {} disconnected gracefully from endpoint {}",
-                transport_id, self.endpoint_id
+                transport_id,
+                self.endpoint_id
             );
         }
 
@@ -3146,7 +3150,10 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
             let mut negotiated_map = negotiated.write().await;
             if negotiated_map.remove(&connection_id).is_some() {
                 #[cfg(feature = "observability")]
-                tracing::debug!("Removed negotiated protocols for connection {}", connection_id);
+                tracing::debug!(
+                    "Removed negotiated protocols for connection {}",
+                    connection_id
+                );
             }
         });
 
@@ -3174,10 +3181,20 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
         transport_id: crate::transport::TransportId,
     ) -> Result<bool, String> {
         #[cfg(feature = "observability")]
-        tracing::debug!(
-            "Channel {} request for protocol '{}' on transport {} (endpoint {})",
-            channel_id, protocol, transport_id, self.endpoint_id
-        );
+        {
+            tracing::debug!(
+                "Channel {} request for protocol '{}' on transport {} (endpoint {})",
+                channel_id,
+                protocol,
+                transport_id,
+                self.endpoint_id
+            );
+        }
+
+        #[cfg(not(feature = "observability"))]
+        {
+            let _ = (channel_id, transport_id); // Suppress unused warnings
+        }
 
         // Note: This is a synchronous trait method, but we need to check async state.
         // We use try_read() to avoid blocking. If the lock is held, we reject the request.
@@ -3192,12 +3209,13 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
                 return Err("Capabilities lock unavailable".to_string());
             }
         };
-        
+
         if !capabilities.contains_key(protocol) {
             #[cfg(feature = "observability")]
             tracing::warn!(
                 "Rejecting channel {} request: protocol '{}' not registered",
-                channel_id, protocol
+                channel_id,
+                protocol
             );
             return Ok(false);
         }
@@ -3207,12 +3225,11 @@ impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
         // requests for registered protocols and let the negotiator handle
         // the actual decision asynchronously.
         // TODO: Make TransportEventHandler trait async in a future version
-        
+
         // For now, just check if the protocol is registered and accept it
         Ok(true)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -3319,6 +3336,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_listen_without_responder() {
         let endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
         let result = endpoint.listen("127.0.0.1:0").await;
@@ -3329,6 +3347,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_listen_with_responder() {
         let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
         endpoint
@@ -3344,6 +3363,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_listen_with_bidirectional() {
         let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
         endpoint
@@ -3359,6 +3379,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_client_server_handshake() {
         // Create server endpoint
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
@@ -3393,6 +3414,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_serializer_mismatch() {
         use crate::serialization::PostcardSerializer;
 
@@ -3423,6 +3445,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_no_compatible_protocols() {
         // Create a server with Protocol1
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
@@ -3447,6 +3470,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_bidirectional_compatibility() {
         // Create a server with Bidirectional capability
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
@@ -3478,6 +3502,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_get_channels_success() {
         use crate::channel::Protocol;
 
@@ -3550,6 +3575,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_get_channels_protocol_not_found() {
         // Create server endpoint
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());

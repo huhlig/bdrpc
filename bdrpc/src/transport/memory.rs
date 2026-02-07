@@ -195,7 +195,10 @@ impl Transport for MemoryTransport {
     }
 
     #[cfg_attr(feature = "observability", instrument(skip(self), fields(transport_id = %self.metadata.id)))]
-    fn shutdown(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>> {
+    fn shutdown(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>>
+    {
         Box::pin(async move {
             #[cfg(feature = "observability")]
             debug!("Shutting down memory transport");

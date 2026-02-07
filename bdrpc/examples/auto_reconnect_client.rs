@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .max_delay(Duration::from_secs(30))
             .multiplier(2.0)
             .max_attempts(None) // Unlimited attempts
-            .build()
+            .build(),
     );
 
     // Create client endpoint with automatic reconnection using the new builder API

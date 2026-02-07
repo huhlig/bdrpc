@@ -37,7 +37,10 @@ async fn test_tcp_transport_framing() {
         let (mut transport, _) = listener.accept().await.expect("Failed to accept");
         let mut buf = vec![0u8; 1024];
         let n = transport.read(&mut buf).await.expect("Failed to read");
-        transport.write_all(&buf[..n]).await.expect("Failed to write");
+        transport
+            .write_all(&buf[..n])
+            .await
+            .expect("Failed to write");
     });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -77,7 +80,10 @@ async fn test_websocket_transport_framing() {
         let mut transport = listener.accept().await.expect("Failed to accept");
         let mut buf = vec![0u8; 1024];
         let n = transport.read(&mut buf).await.expect("Failed to read");
-        transport.write_all(&buf[..n]).await.expect("Failed to write");
+        transport
+            .write_all(&buf[..n])
+            .await
+            .expect("Failed to write");
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
 
@@ -118,7 +124,10 @@ async fn test_quic_transport_framing() {
         let mut transport = listener.accept().await.expect("Failed to accept");
         let mut buf = vec![0u8; 1024];
         let n = transport.read(&mut buf).await.expect("Failed to read");
-        transport.write_all(&buf[..n]).await.expect("Failed to write");
+        transport
+            .write_all(&buf[..n])
+            .await
+            .expect("Failed to write");
         tokio::time::sleep(Duration::from_millis(100)).await;
     });
 
@@ -148,8 +157,8 @@ async fn test_quic_transport_framing() {
 #[cfg(all(feature = "websocket", feature = "quic"))]
 async fn test_all_transports_large_messages() {
     use bdrpc::transport::{
-        QuicConfig, QuicListener, QuicTransport, TcpTransport, WebSocketConfig,
-        WebSocketListener, WebSocketTransport,
+        QuicConfig, QuicListener, QuicTransport, TcpTransport, WebSocketConfig, WebSocketListener,
+        WebSocketTransport,
     };
 
     let large_data = vec![0xAB; 1024 * 1024]; // 1 MB
@@ -166,7 +175,9 @@ async fn test_all_transports_large_messages() {
             let mut total = 0;
             while total < data_len {
                 let n = transport.read(&mut buf[total..]).await.unwrap();
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 total += n;
             }
             transport.write_all(&buf[..total]).await.unwrap();
@@ -184,7 +195,9 @@ async fn test_all_transports_large_messages() {
                 .await
                 .unwrap()
                 .unwrap();
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             total += n;
         }
 
@@ -208,7 +221,9 @@ async fn test_all_transports_large_messages() {
             let mut total = 0;
             while total < data_len {
                 let n = transport.read(&mut buf[total..]).await.unwrap();
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 total += n;
             }
             transport.write_all(&buf[..total]).await.unwrap();
@@ -229,7 +244,9 @@ async fn test_all_transports_large_messages() {
                 .await
                 .unwrap()
                 .unwrap();
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             total += n;
         }
 
@@ -253,7 +270,9 @@ async fn test_all_transports_large_messages() {
             let mut total = 0;
             while total < data_len {
                 let n = transport.read(&mut buf[total..]).await.unwrap();
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 total += n;
             }
             transport.write_all(&buf[..total]).await.unwrap();
@@ -274,7 +293,9 @@ async fn test_all_transports_large_messages() {
                 .await
                 .unwrap()
                 .unwrap();
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             total += n;
         }
 

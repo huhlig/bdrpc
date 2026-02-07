@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Note: In the current implementation, we need to manually accept connections
     // The transport manager will handle the low-level transport details, but
     // connection acceptance is still done through the endpoint API
-    
+
     // For this example, we'll demonstrate the concept even though the full
     // automatic acceptance isn't implemented yet
     println!("Server is ready to accept connections.");

@@ -389,7 +389,10 @@ where
         &self.metadata
     }
 
-    fn shutdown(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>> {
+    fn shutdown(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>>
+    {
         Box::pin(async move {
             use tokio::io::AsyncWriteExt;
             match &mut self.writer {

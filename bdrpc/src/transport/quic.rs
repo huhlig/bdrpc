@@ -78,8 +78,8 @@ use rustls_021 as rustls;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -177,11 +177,11 @@ impl QuicTransport {
         recv_stream: RecvStream,
         config: QuicConfig,
     ) -> Self {
-        let local_addr = connection.local_ip().unwrap_or_else(|| {
-            std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
-        });
+        let local_addr = connection
+            .local_ip()
+            .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
         let peer_addr = connection.remote_address();
-        
+
         let transport_id = TransportId::new(TRANSPORT_ID_COUNTER.fetch_add(1, Ordering::SeqCst));
         let metadata = TransportMetadata::new(transport_id, "quic")
             .with_local_addr(SocketAddr::new(local_addr, 0))
@@ -217,11 +217,12 @@ impl QuicTransport {
         let addr_str = addr.as_ref();
 
         // Parse address
-        let remote_addr: SocketAddr = addr_str
-            .parse()
-            .map_err(|e| TransportError::InvalidConfiguration {
-                reason: format!("Invalid address '{}': {}", addr_str, e),
-            })?;
+        let remote_addr: SocketAddr =
+            addr_str
+                .parse()
+                .map_err(|e| TransportError::InvalidConfiguration {
+                    reason: format!("Invalid address '{}': {}", addr_str, e),
+                })?;
 
         // Create client endpoint
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).map_err(|e| {
@@ -250,12 +251,12 @@ impl QuicTransport {
                 .unwrap_or_else(|_| quinn::IdleTimeout::from(quinn::VarInt::from_u32(60000))),
         ));
         transport_config.keep_alive_interval(Some(config.keep_alive_interval));
-        transport_config.max_concurrent_bidi_streams(
-            quinn::VarInt::from_u32(config.max_concurrent_bidi_streams.min(u32::MAX as u64) as u32),
-        );
-        transport_config.max_concurrent_uni_streams(
-            quinn::VarInt::from_u32(config.max_concurrent_uni_streams.min(u32::MAX as u64) as u32),
-        );
+        transport_config.max_concurrent_bidi_streams(quinn::VarInt::from_u32(
+            config.max_concurrent_bidi_streams.min(u32::MAX as u64) as u32,
+        ));
+        transport_config.max_concurrent_uni_streams(quinn::VarInt::from_u32(
+            config.max_concurrent_uni_streams.min(u32::MAX as u64) as u32,
+        ));
         transport_config.initial_mtu(config.max_udp_payload_size);
 
         client_config.transport_config(Arc::new(transport_config));
@@ -266,20 +267,22 @@ impl QuicTransport {
             .connect(remote_addr, "localhost")
             .map_err(|e| TransportError::ConnectionFailed {
                 address: addr_str.to_string(),
-                source: io::Error::new(io::ErrorKind::Other, e),
+                source: io::Error::other(e),
             })?
             .await
             .map_err(|e| TransportError::ConnectionFailed {
                 address: addr_str.to_string(),
-                source: io::Error::new(io::ErrorKind::Other, e),
+                source: io::Error::other(e),
             })?;
 
         // Open bidirectional stream
-        let (send_stream, recv_stream) = connection.open_bi().await.map_err(|e| {
-            TransportError::QuicEndpointError {
-                reason: format!("Failed to open stream: {}", e),
-            }
-        })?;
+        let (send_stream, recv_stream) =
+            connection
+                .open_bi()
+                .await
+                .map_err(|e| TransportError::QuicEndpointError {
+                    reason: format!("Failed to open stream: {}", e),
+                })?;
 
         Ok(Self::new(connection, send_stream, recv_stream, config))
     }
@@ -289,9 +292,34 @@ impl QuicTransport {
         &self.connection
     }
 
+    /// Get the QUIC configuration.
+    ///
+    /// Returns a reference to the configuration used by this transport.
+    /// This can be useful for inspecting settings like idle timeout,
+    /// keepalive interval, and stream limits.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # #[cfg(feature = "quic")]
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// use bdrpc::transport::{QuicTransport, QuicConfig};
+    ///
+    /// let config = QuicConfig::default();
+    /// let transport = QuicTransport::connect("127.0.0.1:4433", config).await?;
+    ///
+    /// let config = transport.config();
+    /// println!("Max idle timeout: {:?}", config.max_idle_timeout);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn config(&self) -> &QuicConfig {
+        &self.config
+    }
+
     /// Check if the connection is still alive.
     pub fn is_connected(&self) -> bool {
-        !self.connection.close_reason().is_some()
+        self.connection.close_reason().is_none()
     }
 }
 
@@ -309,9 +337,11 @@ impl Transport for QuicTransport {
 
             // Finish the send stream
             let mut send = self.send_stream.lock().await;
-            send.finish().await.map_err(|e| TransportError::QuicEndpointError {
-                reason: format!("Failed to finish stream: {}", e),
-            })?;
+            send.finish()
+                .await
+                .map_err(|e| TransportError::QuicEndpointError {
+                    reason: format!("Failed to finish stream: {}", e),
+                })?;
 
             Ok(())
         })
@@ -417,28 +447,30 @@ impl QuicListener {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn bind(
-        addr: impl AsRef<str>,
-        config: QuicConfig,
-    ) -> Result<Self, TransportError> {
+    pub async fn bind(addr: impl AsRef<str>, config: QuicConfig) -> Result<Self, TransportError> {
         let addr_str = addr.as_ref();
 
         // Parse address
-        let bind_addr: SocketAddr = addr_str
-            .parse()
-            .map_err(|e| TransportError::InvalidConfiguration {
-                reason: format!("Invalid address '{}': {}", addr_str, e),
-            })?;
+        let bind_addr: SocketAddr =
+            addr_str
+                .parse()
+                .map_err(|e| TransportError::InvalidConfiguration {
+                    reason: format!("Invalid address '{}': {}", addr_str, e),
+                })?;
 
         // Generate self-signed certificate for testing
-        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
-            .map_err(|e| TransportError::QuicEndpointError {
-                reason: format!("Failed to generate certificate: {}", e),
+        let cert =
+            rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).map_err(|e| {
+                TransportError::QuicEndpointError {
+                    reason: format!("Failed to generate certificate: {}", e),
+                }
             })?;
 
-        let cert_der = cert.serialize_der().map_err(|e| TransportError::QuicEndpointError {
-            reason: format!("Failed to serialize certificate: {}", e),
-        })?;
+        let cert_der = cert
+            .serialize_der()
+            .map_err(|e| TransportError::QuicEndpointError {
+                reason: format!("Failed to serialize certificate: {}", e),
+            })?;
         let priv_key = cert.serialize_private_key_der();
 
         // Create rustls server config (0.21 API)
@@ -464,22 +496,21 @@ impl QuicListener {
                 .unwrap_or_else(|_| quinn::IdleTimeout::from(quinn::VarInt::from_u32(60000))),
         ));
         transport_config.keep_alive_interval(Some(config.keep_alive_interval));
-        transport_config.max_concurrent_bidi_streams(
-            quinn::VarInt::from_u32(config.max_concurrent_bidi_streams.min(u32::MAX as u64) as u32),
-        );
-        transport_config.max_concurrent_uni_streams(
-            quinn::VarInt::from_u32(config.max_concurrent_uni_streams.min(u32::MAX as u64) as u32),
-        );
+        transport_config.max_concurrent_bidi_streams(quinn::VarInt::from_u32(
+            config.max_concurrent_bidi_streams.min(u32::MAX as u64) as u32,
+        ));
+        transport_config.max_concurrent_uni_streams(quinn::VarInt::from_u32(
+            config.max_concurrent_uni_streams.min(u32::MAX as u64) as u32,
+        ));
 
         server_config.transport_config(Arc::new(transport_config));
 
         // Create endpoint
-        let endpoint = Endpoint::server(server_config, bind_addr).map_err(|e| {
-            TransportError::BindFailed {
+        let endpoint =
+            Endpoint::server(server_config, bind_addr).map_err(|e| TransportError::BindFailed {
                 address: addr_str.to_string(),
-                source: io::Error::new(io::ErrorKind::Other, e),
-            }
-        })?;
+                source: io::Error::other(e),
+            })?;
 
         Ok(Self { endpoint, config })
     }
@@ -498,16 +529,17 @@ impl QuicListener {
             .await
             .map_err(|e| TransportError::ConnectionFailed {
                 address: "unknown".to_string(),
-                source: io::Error::new(io::ErrorKind::Other, e),
+                source: io::Error::other(e),
             })?;
 
         // Accept bidirectional stream
-        let (send_stream, recv_stream) = connection
-            .accept_bi()
-            .await
-            .map_err(|e| TransportError::QuicEndpointError {
-                reason: format!("Failed to accept stream: {}", e),
-            })?;
+        let (send_stream, recv_stream) =
+            connection
+                .accept_bi()
+                .await
+                .map_err(|e| TransportError::QuicEndpointError {
+                    reason: format!("Failed to accept stream: {}", e),
+                })?;
 
         Ok(QuicTransport::new(
             connection,
@@ -518,12 +550,11 @@ impl QuicListener {
     }
 
     /// Get the local address this listener is bound to.
+    #[allow(clippy::result_large_err)]
     pub fn local_addr(&self) -> Result<SocketAddr, TransportError> {
-        self.endpoint
-            .local_addr()
-            .map_err(|e| TransportError::Io {
-                source: io::Error::new(io::ErrorKind::Other, e),
-            })
+        self.endpoint.local_addr().map_err(|e| TransportError::Io {
+            source: io::Error::other(e),
+        })
     }
 }
 

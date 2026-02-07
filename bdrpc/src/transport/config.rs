@@ -41,22 +41,22 @@ use std::sync::Arc;
 pub enum TransportType {
     /// TCP/IP transport
     Tcp,
-    
+
     /// TLS-encrypted TCP transport
     #[cfg(feature = "tls")]
     Tls,
-    
+
     /// In-memory transport for testing
     Memory,
-    
+
     /// WebSocket transport (future)
     #[cfg(feature = "websocket")]
     WebSocket,
-    
+
     /// QUIC transport (future)
     #[cfg(feature = "quic")]
     Quic,
-    
+
     /// Unix domain socket transport (future)
     #[cfg(unix)]
     UnixSocket,
@@ -129,16 +129,16 @@ impl std::fmt::Display for TransportType {
 pub struct TransportConfig {
     /// Type of transport protocol
     transport_type: TransportType,
-    
+
     /// Address to bind (listener) or connect to (caller)
     address: String,
-    
+
     /// Optional reconnection strategy for callers
     reconnection_strategy: Option<Arc<dyn ReconnectionStrategy>>,
-    
+
     /// Whether this transport is enabled
     enabled: bool,
-    
+
     /// Custom metadata for this transport
     metadata: HashMap<String, String>,
 }
@@ -167,7 +167,7 @@ impl TransportConfig {
             metadata: HashMap::new(),
         }
     }
-    
+
     /// Sets the reconnection strategy for this transport.
     ///
     /// This is typically used for caller transports to enable automatic
@@ -184,14 +184,11 @@ impl TransportConfig {
     /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
     ///     .with_reconnection_strategy(strategy);
     /// ```
-    pub fn with_reconnection_strategy(
-        mut self,
-        strategy: Arc<dyn ReconnectionStrategy>,
-    ) -> Self {
+    pub fn with_reconnection_strategy(mut self, strategy: Arc<dyn ReconnectionStrategy>) -> Self {
         self.reconnection_strategy = Some(strategy);
         self
     }
-    
+
     /// Sets whether this transport is enabled.
     ///
     /// Disabled transports will not accept connections (listeners) or
@@ -210,7 +207,7 @@ impl TransportConfig {
         self.enabled = enabled;
         self
     }
-    
+
     /// Adds metadata to this transport configuration.
     ///
     /// Metadata can be used for custom tracking, routing, or other purposes.
@@ -229,32 +226,32 @@ impl TransportConfig {
         self.metadata.insert(key.into(), value.into());
         self
     }
-    
+
     /// Returns the transport type.
     pub fn transport_type(&self) -> TransportType {
         self.transport_type
     }
-    
+
     /// Returns the address.
     pub fn address(&self) -> &str {
         &self.address
     }
-    
+
     /// Returns the reconnection strategy, if any.
     pub fn reconnection_strategy(&self) -> Option<&Arc<dyn ReconnectionStrategy>> {
         self.reconnection_strategy.as_ref()
     }
-    
+
     /// Returns whether this transport is enabled.
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
-    
+
     /// Returns the metadata.
     pub fn metadata(&self) -> &HashMap<String, String> {
         &self.metadata
     }
-    
+
     /// Sets the enabled state.
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
@@ -266,7 +263,10 @@ impl std::fmt::Debug for TransportConfig {
         f.debug_struct("TransportConfig")
             .field("transport_type", &self.transport_type)
             .field("address", &self.address)
-            .field("has_reconnection_strategy", &self.reconnection_strategy.is_some())
+            .field(
+                "has_reconnection_strategy",
+                &self.reconnection_strategy.is_some(),
+            )
             .field("enabled", &self.enabled)
             .field("metadata", &self.metadata)
             .finish()
@@ -277,7 +277,7 @@ impl std::fmt::Debug for TransportConfig {
 mod tests {
     use super::*;
     use crate::reconnection::ExponentialBackoff;
-    
+
     #[test]
     fn test_transport_type_as_str() {
         assert_eq!(TransportType::Tcp.as_str(), "tcp");
@@ -285,13 +285,13 @@ mod tests {
         #[cfg(feature = "tls")]
         assert_eq!(TransportType::Tls.as_str(), "tls");
     }
-    
+
     #[test]
     fn test_transport_type_display() {
         assert_eq!(format!("{}", TransportType::Tcp), "tcp");
         assert_eq!(format!("{}", TransportType::Memory), "memory");
     }
-    
+
     #[test]
     fn test_transport_config_new() {
         let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
@@ -301,7 +301,7 @@ mod tests {
         assert!(config.reconnection_strategy().is_none());
         assert!(config.metadata().is_empty());
     }
-    
+
     #[test]
     fn test_transport_config_with_reconnection() {
         let strategy = Arc::new(ExponentialBackoff::default());
@@ -309,44 +309,46 @@ mod tests {
             .with_reconnection_strategy(strategy);
         assert!(config.reconnection_strategy().is_some());
     }
-    
+
     #[test]
     fn test_transport_config_with_enabled() {
-        let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
-            .with_enabled(false);
+        let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080").with_enabled(false);
         assert!(!config.is_enabled());
     }
-    
+
     #[test]
     fn test_transport_config_with_metadata() {
         let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
             .with_metadata("region", "us-west")
             .with_metadata("priority", "high");
-        
-        assert_eq!(config.metadata().get("region"), Some(&"us-west".to_string()));
+
+        assert_eq!(
+            config.metadata().get("region"),
+            Some(&"us-west".to_string())
+        );
         assert_eq!(config.metadata().get("priority"), Some(&"high".to_string()));
         assert_eq!(config.metadata().len(), 2);
     }
-    
+
     #[test]
     fn test_transport_config_set_enabled() {
         let mut config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
         assert!(config.is_enabled());
-        
+
         config.set_enabled(false);
         assert!(!config.is_enabled());
-        
+
         config.set_enabled(true);
         assert!(config.is_enabled());
     }
-    
+
     #[test]
     fn test_transport_config_debug() {
         let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
             .with_metadata("test", "value");
         let debug_str = format!("{:?}", config);
         assert!(debug_str.contains("TransportConfig"));
-        assert!(debug_str.contains("Tcp"));  // Debug shows enum variant name
+        assert!(debug_str.contains("Tcp")); // Debug shows enum variant name
         assert!(debug_str.contains("127.0.0.1:8080"));
     }
 }

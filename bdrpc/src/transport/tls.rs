@@ -113,6 +113,7 @@ impl TlsConfig {
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(clippy::result_large_err)]
     pub fn client_default(server_name: &str) -> Result<Self, TransportError> {
         let mut root_store = rustls::RootCertStore::empty();
 
@@ -163,6 +164,7 @@ impl TlsConfig {
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(clippy::result_large_err)]
     pub fn client_insecure(server_name: &str) -> Result<Self, TransportError> {
         let config = rustls::ClientConfig::builder()
             .dangerous()
@@ -206,6 +208,7 @@ impl TlsConfig {
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(clippy::result_large_err)]
     pub fn server_from_pem(cert_pem: &[u8], key_pem: &[u8]) -> Result<Self, TransportError> {
         let certs = rustls_pemfile::certs(&mut &cert_pem[..])
             .collect::<Result<Vec<_>, _>>()
@@ -412,7 +415,10 @@ where
         &self.metadata
     }
 
-    fn shutdown(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>> {
+    fn shutdown(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>>
+    {
         Box::pin(async move {
             use tokio::io::AsyncWriteExt;
             self.stream.shutdown().await.map_err(TransportError::from)
