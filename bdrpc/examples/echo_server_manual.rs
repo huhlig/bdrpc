@@ -46,7 +46,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Add a TCP listener using the new transport manager API
     let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
-    endpoint.add_listener("tcp-listener".to_string(), config).await?;
+    endpoint
+        .add_listener("tcp-listener".to_string(), config)
+        .await?;
 
     println!("Echo server listening on 127.0.0.1:8080");
     println!("Waiting for connections...");

@@ -309,9 +309,7 @@ async fn test_all_transports_large_messages() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[cfg(all(feature = "websocket", feature = "quic"))]
 async fn test_all_transports_concurrent_connections() {
-    use bdrpc::transport::{
-        TcpTransport,
-    };
+    use bdrpc::transport::TcpTransport;
 
     // Test TCP concurrent connections
     {

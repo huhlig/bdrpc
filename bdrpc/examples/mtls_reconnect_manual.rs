@@ -149,7 +149,9 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
 
     // Add a TCP listener using the transport manager
     let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8443");
-    endpoint.add_listener("tcp-listener".to_string(), config).await?;
+    endpoint
+        .add_listener("tcp-listener".to_string(), config)
+        .await?;
 
     println!("✅ Server listening on 127.0.0.1:8443");
     println!("⏳ Waiting for client connections...\n");
