@@ -1,9 +1,9 @@
 # Transport Manager Enhancement Implementation Plan
 
-**Status:** Phase 7 Complete - Ready for Phase 8
+**Status:** Phase 8 In Progress - WebSocket Complete
 **Target Release:** v0.2.0
 **Created:** 2026-02-07
-**Last Updated:** 2026-02-07 (Late Evening - Phase 7 Complete)
+**Last Updated:** 2026-02-07 (Evening - Phase 8 WebSocket Complete)
 **Breaking Changes:** Yes (Major refactoring)
 
 ## Progress Summary
@@ -49,11 +49,18 @@
   - ✅ **Performance benchmarks complete: 2.67M-3.27M msg/s (batch throughput)**
   - ✅ No performance regression detected
   - 📝 Memory leak testing deferred to production monitoring
-- ⏳ **Phase 8:** WebSocket & QUIC Transport Support (Pending)
+- 🔄 **Phase 8:** WebSocket & QUIC Transport Support (In Progress - WebSocket Complete ✅)
+  - ✅ WebSocket transport implementation complete (568 lines)
+  - ✅ WebSocketConfig with comprehensive options
+  - ✅ WebSocketListener for server-side
+  - ✅ Error handling for WebSocket and QUIC
+  - ✅ Feature flags and dependencies added
+  - ⏳ QUIC transport implementation pending
+  - ⏳ Examples and integration tests pending
 - ⏳ **Phase 9:** Migration Tools & Final Polish (Pending)
 
-**Current Milestone:** 77.8% Complete (7 of 9 phases done)
-**Last Updated:** 2026-02-07 (Late Evening - Phase 7 Complete ✅)
+**Current Milestone:** 83.3% Complete (7.5 of 9 phases done)
+**Last Updated:** 2026-02-07 (Evening - Phase 8 WebSocket Complete ✅)
 
 ## Executive Summary
 
@@ -817,9 +824,10 @@ All stress tests focus on the TransportManager API and validate behavior under h
 
 ---
 
-### Phase 8: WebSocket & QUIC Transport Support (Week 12-14)
+### Phase 8: WebSocket & QUIC Transport Support (Week 12-14) 🔄 IN PROGRESS
 **Goal:** Add WebSocket and WebTransport over QUIC support
-**Status:** Planned for v0.2.0
+**Status:** In Progress - WebSocket implementation complete, QUIC pending
+**Started:** 2026-02-07
 
 #### Rationale
 - **WebSocket:** Essential for browser-based clients and web applications
@@ -833,25 +841,25 @@ All stress tests focus on the TransportManager API and validate behavior under h
 #### Tasks
 
 ##### WebSocket Support
-- [ ] Add `websocket` feature flag to Cargo.toml
-- [ ] Implement `WebSocketTransport` using `tokio-tungstenite`
-- [ ] Implement `WebSocketListener` for server-side
-- [ ] Add WebSocket configuration options (compression, max frame size, etc.)
-- [ ] Support both `ws://` and `wss://` (secure WebSocket)
-- [ ] Add WebSocket-specific error handling
-- [ ] Implement ping/pong keepalive mechanism
-- [ ] Add WebSocket examples (client and server)
-- [ ] Write WebSocket integration tests
+- [x] Add `websocket` feature flag to Cargo.toml
+- [x] Implement `WebSocketTransport` using `tokio-tungstenite`
+- [x] Implement `WebSocketListener` for server-side
+- [x] Add WebSocket configuration options (compression, max frame size, etc.)
+- [x] Support both `ws://` and `wss://` (secure WebSocket)
+- [x] Add WebSocket-specific error handling
+- [x] Implement ping/pong keepalive mechanism (handled by tokio-tungstenite)
+- [x] Add WebSocket examples (client and server) ✅ 2026-02-07
+- [x] Write WebSocket integration tests ✅ 2026-02-07 (9 tests passing)
 - [ ] Document WebSocket usage patterns
 
 ##### QUIC/WebTransport Support
-- [ ] Add `quic` feature flag to Cargo.toml
-- [ ] Implement `QuicTransport` using `quinn` or `wtransport`
+- [x] Add `quic` feature flag to Cargo.toml
+- [x] Add QUIC-specific error handling
+- [ ] Implement `QuicTransport` using `quinn`
 - [ ] Implement `QuicListener` for server-side
 - [ ] Add QUIC configuration options (congestion control, flow control, etc.)
 - [ ] Support 0-RTT connection establishment
 - [ ] Implement connection migration support
-- [ ] Add QUIC-specific error handling
 - [ ] Handle stream multiplexing efficiently
 - [ ] Add QUIC examples (client and server)
 - [ ] Write QUIC integration tests
@@ -864,9 +872,9 @@ All stress tests focus on the TransportManager API and validate behavior under h
   - `with_websocket_caller(name, addr)`
   - `with_quic_listener(addr, config)`
   - `with_quic_caller(name, addr, config)`
-- [ ] Add transport-specific configuration structs
-  - `WebSocketConfig`
-  - `QuicConfig`
+- [x] Add transport-specific configuration structs
+  - `WebSocketConfig` ✅
+  - `QuicConfig` (pending)
 - [ ] Update transport configuration guide
 - [ ] Add cross-transport compatibility tests
 - [ ] Performance benchmarks for new transports
@@ -1306,6 +1314,131 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - [ ] API documentation complete
   - [ ] Migration examples provided
 - [ ] Ready for integration into v0.2.0
+
+#### Phase 8 Progress Notes (2026-02-07 Evening - WebSocket Examples Complete)
+
+**WebSocket Transport - COMPLETE ✅**
+
+Successfully implemented full WebSocket transport support:
+
+1. **Dependencies Added:**
+   - `tokio-tungstenite = "0.21"` - Async WebSocket implementation
+   - `futures-util = "0.3"` - Stream utilities for WebSocket
+   - `quinn = "0.10"` - QUIC implementation (for future use)
+   - `rcgen = "0.12"` - Certificate generation (for QUIC)
+
+2. **Error Handling:**
+   - Added `WebSocket(tokio_tungstenite::tungstenite::Error)` variant
+   - Added `WebSocketHandshakeFailed { reason: String }` variant
+   - Added `QuicConnection`, `QuicWriteError`, `QuicReadError`, `QuicEndpointError` variants
+   - Updated `is_recoverable()` and `should_close_transport()` methods
+
+3. **WebSocketTransport Implementation (561 lines):**
+   - Full `Transport` trait implementation with AsyncRead/AsyncWrite
+   - Support for both `ws://` and `wss://` URLs via `MaybeTlsStream`
+   - Automatic ping/pong keepalive (handled by tokio-tungstenite)
+   - Binary message support for efficient BDRPC communication
+   - Proper buffering for partial reads
+   - Graceful shutdown support
+
+4. **WebSocketConfig:**
+   - `max_frame_size`: 16 MB default
+   - `max_message_size`: 64 MB default
+   - `compression`: Optional per-message deflate
+   - `ping_interval`: 30s default
+   - `pong_timeout`: 10s default
+   - `accept_unmasked_frames`: For testing
+
+5. **WebSocketListener:**
+   - Binds to TCP address
+   - Performs WebSocket handshake automatically
+   - Returns WebSocketTransport instances
+   - Proper error handling
+
+6. **Integration:**
+   - Added `websocket` module to transport layer
+   - Exported public types with feature gate
+   - Code compiles successfully with `cargo build --features websocket`
+
+7. **Examples Created (2026-02-07 Late Evening):**
+   - `examples/websocket_server.rs` (171 lines) - Echo server with browser compatibility
+   - `examples/websocket_client.rs` (133 lines) - Client with message verification
+   - Both examples compile successfully with `--features websocket`
+   - Feature-gated with helpful error messages when feature is disabled
+   - Includes browser console test instructions
+
+**Build Status:**
+- ✅ Compiles without errors
+- ⚠️ 18 warnings (mostly unused variables in other modules, not in examples)
+- ✅ All WebSocket types properly exported
+- ✅ Feature gating working correctly
+- ✅ Examples build and ready for testing
+
+**Testing Instructions:**
+```bash
+# Terminal 1: Start server
+cargo run --example websocket_server --features websocket
+
+# Terminal 2: Run client
+cargo run --example websocket_client --features websocket
+
+# Or test with browser console:
+const ws = new WebSocket('ws://localhost:8080');
+ws.binaryType = 'arraybuffer';
+ws.onopen = () => ws.send(new TextEncoder().encode('Hello!'));
+ws.onmessage = (e) => console.log(new TextDecoder().decode(e.data));
+```
+
+**Next Steps:**
+1. ~~Write WebSocket integration tests~~ ✅ Complete
+2. Implement QUIC transport
+3. Update TransportType enum
+4. Add EndpointBuilder methods
+5. Documentation and guides
+
+**WebSocket Integration Tests - COMPLETE ✅ (2026-02-07 Evening)**
+
+Successfully implemented comprehensive WebSocket integration tests:
+
+1. **Test Suite Created:**
+   - `bdrpc/tests/websocket_integration.rs` (407 lines)
+   - 9 comprehensive integration tests
+   - All tests passing with multi-threaded runtime
+
+2. **Test Coverage:**
+   - ✅ Basic connection and data transfer
+   - ✅ Large message handling (1 MB+)
+   - ✅ Concurrent connections (5 simultaneous)
+   - ✅ Connection timeout handling
+   - ✅ Custom configuration
+   - ✅ Transport metadata verification
+   - ✅ Graceful shutdown
+   - ✅ Binary data patterns (zeros, ones, sequential, alternating)
+   - ✅ Rapid small messages (100 messages)
+
+3. **Test Results:**
+   ```
+   Summary [2.043s] 9 tests run: 9 passed, 0 skipped
+   ```
+
+4. **Key Learnings:**
+   - Multi-threaded runtime required for `tokio::task::block_in_place`
+   - Server must handle multiple messages in loop for pattern tests
+   - WebSocket transport properly handles binary data
+   - Metadata fields are public (not methods)
+
+5. **Test Quality:**
+   - Proper async/await patterns
+   - Timeout handling for connection failures
+   - Resource cleanup with drop
+   - Error propagation testing
+   - Concurrent access patterns
+
+**Next Priority:**
+- Implement QUIC transport with quinn
+- Add QUIC integration tests
+- Update TransportType enum
+- Add EndpointBuilder convenience methods
 
 ---
 
