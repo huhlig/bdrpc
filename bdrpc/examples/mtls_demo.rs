@@ -408,6 +408,149 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   let tls = TlsTransport::connect(tcp, config).await?;");
     println!("   ```\n");
 
+    // Example 5: Reconnection Strategies with mTLS
+    println!("═══════════════════════════════════════════════════════════\n");
+    println!("📋 Example 5: Reconnection Strategies with mTLS\n");
+    println!("   When using mTLS in production, implement reconnection strategies");
+    println!("   to handle network failures and certificate renewals gracefully.\n");
+
+    println!("   A. Exponential Backoff (Recommended for most cases):");
+    println!("   ```rust");
+    println!("   use bdrpc::endpoint::{{Endpoint, EndpointConfig}};");
+    println!("   use bdrpc::reconnection::ExponentialBackoff;");
+    println!("   use bdrpc::serialization::JsonSerializer;");
+    println!("   use std::sync::Arc;");
+    println!("   use std::time::Duration;");
+    println!("   ");
+    println!("   // Configure exponential backoff with jitter");
+    println!("   let reconnect_strategy = ExponentialBackoff::builder()");
+    println!("       .initial_delay(Duration::from_millis(100))");
+    println!("       .max_delay(Duration::from_secs(30))");
+    println!("       .multiplier(2.0)");
+    println!("       .jitter(true)  // Prevents thundering herd");
+    println!("       .max_attempts(Some(10))");
+    println!("       .build();");
+    println!("   ");
+    println!("   // Create endpoint with reconnection strategy");
+    println!("   let config = EndpointConfig::default()");
+    println!("       .with_reconnection_strategy(Arc::new(reconnect_strategy));");
+    println!("   ");
+    println!("   let mut endpoint = Endpoint::new(JsonSerializer::default(), config);");
+    println!("   ");
+    println!("   // Register protocol and connect with mTLS");
+    println!("   endpoint.register_bidirectional(\"MyProtocol\", 1).await?;");
+    println!("   ");
+    println!("   // Build mTLS config");
+    println!("   let tls_config = MtlsConfigBuilder::new()");
+    println!("       .with_server_name(\"example.com\")");
+    println!("       .with_ca_cert(include_bytes!(\"ca-cert.pem\"))?");
+    println!("       .with_client_cert(");
+    println!("           include_bytes!(\"client-cert.pem\"),");
+    println!("           include_bytes!(\"client-key.pem\"),");
+    println!("       )?");
+    println!("       .build_client()?;");
+    println!("   ");
+    println!("   // Connection will automatically retry with backoff on failure");
+    println!("   let connection = endpoint.connect(\"example.com:443\").await?;");
+    println!("   ```\n");
+
+    println!("   B. Circuit Breaker (For high-availability systems):");
+    println!("   ```rust");
+    println!("   use bdrpc::reconnection::CircuitBreaker;");
+    println!("   ");
+    println!("   // Circuit breaker prevents cascading failures");
+    println!("   let circuit_breaker = CircuitBreaker::builder()");
+    println!("       .failure_threshold(5)  // Open after 5 failures");
+    println!("       .timeout(Duration::from_secs(60))  // Stay open for 60s");
+    println!("       .half_open_attempts(3)  // Try 3 times in half-open");
+    println!("       .build();");
+    println!("   ");
+    println!("   let config = EndpointConfig::default()");
+    println!("       .with_reconnection_strategy(Arc::new(circuit_breaker));");
+    println!("   ```\n");
+
+    println!("   C. Fixed Delay (For predictable retry patterns):");
+    println!("   ```rust");
+    println!("   use bdrpc::reconnection::FixedDelay;");
+    println!("   ");
+    println!("   // Simple fixed delay between retries");
+    println!("   let fixed_delay = FixedDelay::new(Duration::from_secs(5));");
+    println!("   ");
+    println!("   let config = EndpointConfig::default()");
+    println!("       .with_reconnection_strategy(Arc::new(fixed_delay));");
+    println!("   ```\n");
+
+    println!("   D. No Reconnect (For one-shot connections):");
+    println!("   ```rust");
+    println!("   use bdrpc::reconnection::NoReconnect;");
+    println!("   ");
+    println!("   // Disable automatic reconnection");
+    println!("   let no_reconnect = NoReconnect::new();");
+    println!("   ");
+    println!("   let config = EndpointConfig::default()");
+    println!("       .with_reconnection_strategy(Arc::new(no_reconnect));");
+    println!("   ```\n");
+
+    println!("   🔄 Reconnection Strategy Comparison:");
+    println!("   ");
+    println!(
+        "   | Strategy           | Use Case                    | Pros                      | Cons                    |"
+    );
+    println!(
+        "   |--------------------|----------------------------|---------------------------|-------------------------|"
+    );
+    println!(
+        "   | ExponentialBackoff | General purpose (default)  | Adaptive, prevents storms | Complex configuration   |"
+    );
+    println!(
+        "   | CircuitBreaker     | High-availability systems  | Prevents cascading fails  | May give up too early   |"
+    );
+    println!(
+        "   | FixedDelay         | Predictable retry patterns | Simple, consistent        | May overwhelm on spikes |"
+    );
+    println!(
+        "   | NoReconnect        | One-shot connections       | No retry overhead         | Manual reconnect needed |\n"
+    );
+
+    println!("   💡 Best Practices for mTLS Reconnection:");
+    println!("   • Use ExponentialBackoff with jitter for most cases");
+    println!("   • Implement certificate renewal before expiration");
+    println!("   • Monitor reconnection metrics (attempts, failures, delays)");
+    println!("   • Set reasonable max_attempts to avoid infinite retries");
+    println!("   • Consider circuit breaker for cascading failure prevention");
+    println!("   • Test reconnection behavior with expired certificates");
+    println!("   • Log reconnection events for debugging and monitoring\n");
+
+    println!("   🔐 Certificate Renewal During Reconnection:");
+    println!("   ```rust");
+    println!("   // Reload certificates on reconnection");
+    println!("   async fn reconnect_with_fresh_certs() -> Result<(), Box<dyn Error>> {{");
+    println!("       loop {{");
+    println!("           // Load latest certificates from disk");
+    println!("           let cert = std::fs::read(\"client-cert.pem\")?;");
+    println!("           let key = std::fs::read(\"client-key.pem\")?;");
+    println!("           let ca = std::fs::read(\"ca-cert.pem\")?;");
+    println!("           ");
+    println!("           // Build fresh mTLS config");
+    println!("           let tls_config = MtlsConfigBuilder::new()");
+    println!("               .with_server_name(\"example.com\")");
+    println!("               .with_ca_cert(&ca)?");
+    println!("               .with_client_cert(&cert, &key)?");
+    println!("               .build_client()?;");
+    println!("           ");
+    println!("           // Attempt connection");
+    println!("           match endpoint.connect(\"example.com:443\").await {{");
+    println!("               Ok(conn) => return Ok(()),");
+    println!("               Err(e) => {{");
+    println!("                   eprintln!(\"Connection failed: {{}}\", e);");
+    println!("                   // Reconnection strategy handles retry timing");
+    println!("                   tokio::time::sleep(Duration::from_secs(1)).await;");
+    println!("               }}");
+    println!("           }}");
+    println!("       }}");
+    println!("   }}");
+    println!("   ```\n");
+
     // Summary
     println!("═══════════════════════════════════════════════════════════\n");
     println!("🎉 mTLS Configuration Summary\n");
