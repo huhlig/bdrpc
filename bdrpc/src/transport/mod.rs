@@ -208,6 +208,7 @@
 //! - QUIC transport for improved performance over unreliable networks
 //! - Unix domain sockets for local IPC
 
+mod config;
 mod error;
 mod manager;
 mod memory;
@@ -220,6 +221,7 @@ mod tls;
 #[cfg(feature = "compression")]
 mod compression;
 
+pub use config::{TransportConfig, TransportType};
 pub use error::TransportError;
 pub use manager::TransportManager;
 pub use memory::MemoryTransport;
