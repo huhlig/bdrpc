@@ -17,7 +17,10 @@
 //! Builder pattern for ergonomic endpoint configuration.
 
 use crate::endpoint::{Endpoint, EndpointConfig, EndpointError, ProtocolDirection};
+use crate::reconnection::ReconnectionStrategy;
 use crate::serialization::Serializer;
+use crate::transport::{TransportConfig, TransportType};
+use std::sync::Arc;
 
 /// A protocol registration to be applied when building the endpoint.
 #[derive(Debug, Clone)]
@@ -25,6 +28,14 @@ struct ProtocolRegistration {
     name: String,
     version: u32,
     direction: ProtocolDirection,
+}
+
+/// A transport configuration to be applied when building the endpoint.
+#[derive(Clone)]
+struct TransportRegistration {
+    name: String,
+    config: TransportConfig,
+    is_listener: bool,
 }
 
 /// Builder for creating and configuring endpoints.
@@ -134,6 +145,7 @@ pub struct EndpointBuilder<S: Serializer> {
     serializer: S,
     config: EndpointConfig,
     protocols: Vec<ProtocolRegistration>,
+    transports: Vec<TransportRegistration>,
 }
 
 impl<S: Serializer> EndpointBuilder<S> {
@@ -152,6 +164,7 @@ impl<S: Serializer> EndpointBuilder<S> {
             serializer,
             config: EndpointConfig::default(),
             protocols: Vec::new(),
+            transports: Vec::new(),
         }
     }
 
@@ -175,6 +188,7 @@ impl<S: Serializer> EndpointBuilder<S> {
             serializer,
             config,
             protocols: Vec::new(),
+            transports: Vec::new(),
         }
     }
 
@@ -378,6 +392,213 @@ impl<S: Serializer> EndpointBuilder<S> {
         self
     }
 
+    /// Adds a TCP listener transport.
+    ///
+    /// This configures the endpoint to listen for incoming TCP connections
+    /// on the specified address.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let endpoint = EndpointBuilder::server(PostcardSerializer::default())
+    ///     .with_tcp_listener("0.0.0.0:8080")
+    ///     .with_responder("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_tcp_listener(mut self, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::Tcp, addr);
+        self.transports.push(TransportRegistration {
+            name: format!("tcp-listener-{}", self.transports.len()),
+            config,
+            is_listener: true,
+        });
+        self
+    }
+
+    /// Adds a TLS listener transport.
+    ///
+    /// This configures the endpoint to listen for incoming TLS-encrypted
+    /// connections on the specified address.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let endpoint = EndpointBuilder::server(PostcardSerializer::default())
+    ///     .with_tls_listener("0.0.0.0:8443")
+    ///     .with_responder("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "tls")]
+    pub fn with_tls_listener(mut self, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::Tls, addr);
+        self.transports.push(TransportRegistration {
+            name: format!("tls-listener-{}", self.transports.len()),
+            config,
+            is_listener: true,
+        });
+        self
+    }
+
+    /// Adds a TCP caller transport.
+    ///
+    /// This configures the endpoint to connect to a remote TCP server.
+    /// The connection can be initiated later using `connect_transport()`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = EndpointBuilder::client(PostcardSerializer::default())
+    ///     .with_tcp_caller("main", "127.0.0.1:8080")
+    ///     .with_caller("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// let conn = endpoint.connect_transport("main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_tcp_caller(mut self, name: impl Into<String>, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::Tcp, addr);
+        self.transports.push(TransportRegistration {
+            name: name.into(),
+            config,
+            is_listener: false,
+        });
+        self
+    }
+
+    /// Adds a TLS caller transport.
+    ///
+    /// This configures the endpoint to connect to a remote TLS server.
+    /// The connection can be initiated later using `connect_transport()`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = EndpointBuilder::client(PostcardSerializer::default())
+    ///     .with_tls_caller("secure", "127.0.0.1:8443")
+    ///     .with_caller("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// let conn = endpoint.connect_transport("secure").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "tls")]
+    pub fn with_tls_caller(mut self, name: impl Into<String>, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::Tls, addr);
+        self.transports.push(TransportRegistration {
+            name: name.into(),
+            config,
+            is_listener: false,
+        });
+        self
+    }
+
+    /// Adds a custom transport configuration.
+    ///
+    /// This allows you to configure a transport with custom settings,
+    /// including reconnection strategies and metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    /// use bdrpc::reconnection::ExponentialBackoff;
+    /// use std::sync::Arc;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let strategy = Arc::new(ExponentialBackoff::default());
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
+    ///     .with_reconnection_strategy(strategy)
+    ///     .with_metadata("region", "us-west");
+    ///
+    /// let mut endpoint = EndpointBuilder::client(PostcardSerializer::default())
+    ///     .with_transport("main", config, false)
+    ///     .with_caller("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_transport(
+        mut self,
+        name: impl Into<String>,
+        config: TransportConfig,
+        is_listener: bool,
+    ) -> Self {
+        self.transports.push(TransportRegistration {
+            name: name.into(),
+            config,
+            is_listener,
+        });
+        self
+    }
+
+    /// Sets the reconnection strategy for a named caller transport.
+    ///
+    /// This must be called after adding the transport with `with_tcp_caller()`,
+    /// `with_tls_caller()`, or `with_transport()`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    /// use bdrpc::reconnection::ExponentialBackoff;
+    /// use std::sync::Arc;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let strategy = Arc::new(ExponentialBackoff::default());
+    ///
+    /// let mut endpoint = EndpointBuilder::client(PostcardSerializer::default())
+    ///     .with_tcp_caller("main", "127.0.0.1:8080")
+    ///     .with_reconnection_strategy("main", strategy)
+    ///     .with_caller("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_reconnection_strategy(
+        mut self,
+        name: &str,
+        strategy: Arc<dyn ReconnectionStrategy>,
+    ) -> Self {
+        if let Some(transport) = self.transports.iter_mut().find(|t| t.name == name) {
+            transport.config = transport
+                .config
+                .clone()
+                .with_reconnection_strategy(strategy);
+        }
+        self
+    }
+
     /// Builds the endpoint with all registered protocols.
     ///
     /// This creates the endpoint and registers all protocols that were added
@@ -427,6 +648,17 @@ impl<S: Serializer> EndpointBuilder<S> {
                         .register_bidirectional(protocol.name, protocol.version)
                         .await?;
                 }
+            }
+        }
+
+        // Add all transports
+        for transport in self.transports {
+            if transport.is_listener {
+                endpoint
+                    .add_listener(transport.name, transport.config)
+                    .await?;
+            } else {
+                endpoint.add_caller(transport.name, transport.config).await?;
             }
         }
 
@@ -562,6 +794,144 @@ mod tests {
 
         let capabilities = endpoint.capabilities().await;
         assert_eq!(capabilities.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_with_tcp_caller() {
+        let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+            .with_tcp_caller("main", "127.0.0.1:8080")
+            .with_caller("UserService", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("UserService").await);
+        // Transport is registered but not connected yet
+    }
+
+    #[tokio::test]
+    async fn test_with_tcp_listener() {
+        let endpoint = EndpointBuilder::server(JsonSerializer::default())
+            .with_tcp_listener("127.0.0.1:0") // Use port 0 for auto-assignment
+            .with_responder("UserService", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("UserService").await);
+        // Listener is registered
+    }
+
+    #[tokio::test]
+    async fn test_multiple_transports() {
+        let endpoint = EndpointBuilder::server(JsonSerializer::default())
+            .with_tcp_listener("127.0.0.1:0")
+            .with_tcp_listener("127.0.0.1:0")
+            .with_responder("UserService", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("UserService").await);
+    }
+
+    #[tokio::test]
+    async fn test_with_reconnection_strategy() {
+        use crate::reconnection::ExponentialBackoff;
+
+        let strategy = Arc::new(ExponentialBackoff::default());
+
+        let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+            .with_tcp_caller("main", "127.0.0.1:8080")
+            .with_reconnection_strategy("main", strategy)
+            .with_caller("UserService", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("UserService").await);
+    }
+
+    #[tokio::test]
+    async fn test_with_custom_transport() {
+        use crate::reconnection::ExponentialBackoff;
+
+        let strategy = Arc::new(ExponentialBackoff::default());
+        let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
+            .with_reconnection_strategy(strategy)
+            .with_metadata("region", "us-west");
+
+        let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+            .with_transport("custom", config, false)
+            .with_caller("UserService", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("UserService").await);
+    }
+
+    #[tokio::test]
+    async fn test_mixed_protocols_and_transports() {
+        let endpoint = EndpointBuilder::peer(JsonSerializer::default())
+            .with_tcp_listener("127.0.0.1:0")
+            .with_tcp_caller("peer1", "127.0.0.1:8081")
+            .with_tcp_caller("peer2", "127.0.0.1:8082")
+            .with_bidirectional("ChatProtocol", 1)
+            .with_bidirectional("FileTransfer", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("ChatProtocol").await);
+        assert!(endpoint.has_protocol("FileTransfer").await);
+    }
+
+    #[tokio::test]
+    async fn test_reconnection_strategy_for_nonexistent_transport() {
+        use crate::reconnection::ExponentialBackoff;
+
+        let strategy = Arc::new(ExponentialBackoff::default());
+
+        // Should not panic, just silently ignore
+        let endpoint = EndpointBuilder::client(JsonSerializer::default())
+            .with_tcp_caller("main", "127.0.0.1:8080")
+            .with_reconnection_strategy("nonexistent", strategy)
+            .with_caller("UserService", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("UserService").await);
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_all_features() {
+        use crate::reconnection::ExponentialBackoff;
+        use std::time::Duration;
+
+        let strategy = Arc::new(ExponentialBackoff::default());
+
+        let endpoint = EndpointBuilder::server(JsonSerializer::default())
+            .configure(|config| {
+                config
+                    .with_channel_buffer_size(1000)
+                    .with_handshake_timeout(Duration::from_secs(10))
+                    .with_max_connections(Some(500))
+            })
+            .with_tcp_listener("0.0.0.0:0")
+            .with_tcp_caller("backup", "127.0.0.1:9090")
+            .with_reconnection_strategy("backup", strategy)
+            .with_responder("UserService", 1)
+            .with_responder("OrderService", 1)
+            .with_bidirectional("AdminProtocol", 1)
+            .build()
+            .await
+            .unwrap();
+
+        assert!(endpoint.has_protocol("UserService").await);
+        assert!(endpoint.has_protocol("OrderService").await);
+        assert!(endpoint.has_protocol("AdminProtocol").await);
     }
 }
 

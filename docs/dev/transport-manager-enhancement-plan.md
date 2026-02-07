@@ -16,12 +16,19 @@
   - ✅ New transport management methods
   - ✅ Deprecation warnings added
   - ✅ All tests passing (462/462)
-- ⏳ **Phase 5:** EndpointBuilder Enhancement (Pending)
+- ✅ **Phase 5:** EndpointBuilder Enhancement (Complete)
+  - ✅ Transport configuration methods added
+  - ✅ TCP listener/caller support
+  - ✅ TLS listener/caller support (conditional)
+  - ✅ Custom transport configuration
+  - ✅ Reconnection strategy configuration
+  - ✅ Comprehensive tests (9 new tests)
+  - ✅ All tests passing (451/451)
 - ⏳ **Phase 6:** Examples & Documentation (Pending)
 - ⏳ **Phase 7:** Testing & Hardening (Pending)
 - ⏳ **Phase 8:** Migration Tools & Final Polish (Pending)
 
-**Current Milestone:** 50.0% Complete (4 of 8 phases done)
+**Current Milestone:** 62.5% Complete (5 of 8 phases done)
 **Last Updated:** 2026-02-07
 
 ## Executive Summary
@@ -410,16 +417,17 @@ impl<S: Serializer> Endpoint<S> {
 
 ---
 
-### Phase 5: EndpointBuilder Enhancement (Week 8)
+### Phase 5: EndpointBuilder Enhancement (Week 8) ✅ COMPLETE
 **Goal:** Add transport configuration to EndpointBuilder
+**Status:** Complete (2026-02-07)
 
 #### Tasks
-- [ ] Add transport configuration methods to EndpointBuilder
-- [ ] Support multiple listener configurations
-- [ ] Support multiple caller configurations
-- [ ] Add preset configurations (client, server, peer)
-- [ ] Update builder tests
-- [ ] Update builder documentation
+- [x] Add transport configuration methods to EndpointBuilder
+- [x] Support multiple listener configurations
+- [x] Support multiple caller configurations
+- [x] Add preset configurations (client, server, peer)
+- [x] Update builder tests
+- [x] Update builder documentation
 
 #### Deliverables
 ```rust
@@ -446,11 +454,59 @@ let endpoint = EndpointBuilder::server(PostcardSerializer::default())
 ```
 
 #### Testing
-- Test builder with multiple listeners
-- Test builder with multiple callers
-- Test builder with reconnection strategies
-- Test preset configurations
-- Documentation tests
+- ✅ Test builder with multiple listeners
+- ✅ Test builder with multiple callers
+- ✅ Test builder with reconnection strategies
+- ✅ Test preset configurations
+- ✅ Documentation tests (all examples compile)
+
+#### Phase 5 Completion Notes (2026-02-07)
+
+**What Was Completed:**
+1. **New Transport Configuration Methods:**
+   - `with_tcp_listener()` - Add TCP listener transports
+   - `with_tls_listener()` - Add TLS listener transports (conditional on `tls` feature)
+   - `with_tcp_caller()` - Add TCP caller transports with named connections
+   - `with_tls_caller()` - Add TLS caller transports (conditional on `tls` feature)
+   - `with_transport()` - Add custom transport configurations
+   - `with_reconnection_strategy()` - Configure reconnection for named transports
+
+2. **Internal Structure:**
+   - Added `TransportRegistration` struct to track transport configurations
+   - Added `transports` field to `EndpointBuilder`
+   - Updated all constructors to initialize empty transport list
+   - Modified `build()` method to register all transports with the endpoint
+
+3. **Comprehensive Test Coverage:**
+   - `test_with_tcp_caller` - Basic TCP caller configuration
+   - `test_with_tcp_listener` - Basic TCP listener configuration
+   - `test_multiple_transports` - Multiple listeners on same endpoint
+   - `test_with_reconnection_strategy` - Reconnection strategy configuration
+   - `test_with_custom_transport` - Custom transport with metadata
+   - `test_mixed_protocols_and_transports` - Complex peer configuration
+   - `test_reconnection_strategy_for_nonexistent_transport` - Error handling
+   - `test_builder_with_all_features` - Full-featured server configuration
+   - All 17 builder tests passing, 451 total tests passing
+
+4. **Documentation:**
+   - Comprehensive doc comments with examples for all new methods
+   - Examples show both basic and advanced usage patterns
+   - Clear migration path from old API to new API
+
+**Technical Decisions:**
+- Transport names auto-generated for listeners (`tcp-listener-0`, etc.)
+- Transport names required for callers (for later connection via `connect_transport()`)
+- Reconnection strategies applied by name after transport registration
+- Builder pattern maintains fluent API style
+- All transport registration deferred to `build()` for atomic endpoint creation
+
+**Integration:**
+- Seamlessly integrates with existing protocol registration methods
+- Works with all three preset configurations (client, server, peer)
+- Compatible with custom endpoint configuration via `configure()`
+- Transports registered after protocols during `build()`
+
+**Ready for Phase 6:** Examples & Documentation
 
 ---
 
