@@ -19,12 +19,19 @@ This guide covers everything you need to know about configuring and using transp
 
 1. [Quick Start](#quick-start)
 2. [Transport Types](#transport-types)
+   - [TCP Transport](#tcp-transport)
+   - [TLS Transport](#tls-transport)
+   - [Memory Transport](#memory-transport)
+   - [WebSocket Transport](#websocket-transport)
+   - [QUIC Transport](#quic-transport)
+   - [Custom Transports](#custom-transports)
 3. [Server Configuration](#server-configuration)
 4. [Client Configuration](#client-configuration)
 5. [Reconnection Strategies](#reconnection-strategies)
 6. [Advanced Topics](#advanced-topics)
 7. [Best Practices](#best-practices)
 8. [Troubleshooting](#troubleshooting)
+9. [Transport Comparison](#transport-comparison)
 
 ## Quick Start
 
@@ -164,6 +171,117 @@ let (client_transport, server_transport) = MemoryTransport::pair();
 - In-process IPC
 - Development and debugging
 
+### WebSocket Transport
+
+WebSocket transport for browser compatibility and web applications.
+
+```rust
+// Server: Listen for WebSocket connections
+#[cfg(feature = "websocket")]
+{
+    let endpoint = EndpointBuilder::server(serializer)
+        .with_websocket_listener("0.0.0.0:8080")
+        .with_responder("UserService", 1)
+        .build()
+        .await?;
+}
+
+// Client: Connect via WebSocket
+#[cfg(feature = "websocket")]
+{
+    let endpoint = EndpointBuilder::client(serializer)
+        .with_websocket_caller("server", "ws://127.0.0.1:8080")
+        .build()
+        .await?;
+}
+```
+
+**Features:**
+- Browser-compatible (works with JavaScript WebSocket API)
+- Firewall-friendly (uses HTTP/HTTPS ports)
+- Automatic ping/pong keepalive
+- Binary message support for efficiency
+- Optional per-message compression
+- Secure WebSocket (WSS) support
+
+**Use Cases:**
+- Web browser clients
+- Real-time web applications
+- Cross-platform compatibility
+- Firewall traversal
+
+**Configuration:**
+```rust
+use bdrpc::transport::WebSocketConfig;
+use std::time::Duration;
+
+let ws_config = WebSocketConfig {
+    max_frame_size: 16 * 1024 * 1024,      // 16 MB
+    max_message_size: 64 * 1024 * 1024,    // 64 MB
+    compression: false,                     // Disable for performance
+    ping_interval: Duration::from_secs(30), // Keepalive
+    pong_timeout: Duration::from_secs(10),  // Response timeout
+    accept_unmasked_frames: false,          // Security
+};
+```
+
+### QUIC Transport
+
+Modern, high-performance transport with built-in multiplexing and 0-RTT.
+
+```rust
+// Server: Listen for QUIC connections
+#[cfg(feature = "quic")]
+{
+    let endpoint = EndpointBuilder::server(serializer)
+        .with_quic_listener("0.0.0.0:4433")
+        .with_responder("UserService", 1)
+        .build()
+        .await?;
+}
+
+// Client: Connect via QUIC
+#[cfg(feature = "quic")]
+{
+    let endpoint = EndpointBuilder::client(serializer)
+        .with_quic_caller("server", "127.0.0.1:4433")
+        .build()
+        .await?;
+}
+```
+
+**Features:**
+- Built-in TLS 1.3 encryption (mandatory)
+- 0-RTT connection establishment
+- Connection migration (survives IP changes)
+- Stream multiplexing (no head-of-line blocking)
+- Better congestion control than TCP
+- Improved performance on lossy networks
+
+**Use Cases:**
+- Mobile applications (handles network changes)
+- Low-latency gaming
+- Real-time applications
+- High-performance RPC
+- Unreliable networks (WiFi, cellular)
+
+**Configuration:**
+```rust
+use bdrpc::transport::QuicConfig;
+use std::time::Duration;
+
+let quic_config = QuicConfig {
+    max_idle_timeout: Duration::from_secs(60),
+    keep_alive_interval: Duration::from_secs(15),
+    max_concurrent_bidi_streams: 100,
+    max_concurrent_uni_streams: 100,
+    enable_0rtt: true,                      // Fast reconnection
+    initial_window: 128 * 1024,             // 128 KB
+    max_udp_payload_size: 1350,             // Safe for most networks
+    enable_migration: true,                 // Network change support
+};
+```
+
 ### Custom Transports
 
 You can implement custom transports for specialized needs:
@@ -212,13 +330,24 @@ let endpoint = EndpointBuilder::server(serializer)
 
 ### Mixed Protocol Server
 
-Combine TCP and TLS listeners:
+Combine multiple transport types on one server:
 
 ```rust
+// TCP + TLS
 #[cfg(feature = "tls")]
 let endpoint = EndpointBuilder::server(serializer)
     .with_tcp_listener("0.0.0.0:8080")           // Unencrypted
     .with_tls_listener("0.0.0.0:8443", tls_config) // Encrypted
+    .with_responder("UserService", 1)
+    .build()
+    .await?;
+
+// TCP + WebSocket + QUIC (all protocols)
+#[cfg(all(feature = "websocket", feature = "quic"))]
+let endpoint = EndpointBuilder::server(serializer)
+    .with_tcp_listener("0.0.0.0:8080")           // Traditional RPC
+    .with_websocket_listener("0.0.0.0:8081")     // Browser clients
+    .with_quic_listener("0.0.0.0:4433")          // Mobile/high-perf
     .with_responder("UserService", 1)
     .build()
     .await?;
@@ -678,6 +807,116 @@ endpoint_builder.configure(|config| {
         .with_channel_buffer_size(2000)  // Larger buffers
         .with_max_frame_size(32 * 1024 * 1024)  // 32MB frames
 })
+```
+
+## Transport Comparison
+
+### Performance Characteristics
+
+| Transport | Throughput | Latency | CPU Usage | Memory | Network Overhead |
+|-----------|-----------|---------|-----------|--------|------------------|
+| TCP       | High      | Low     | Low       | Low    | Minimal          |
+| TLS       | High      | Low     | Medium    | Low    | Low (encryption) |
+| WebSocket | High      | Low     | Low       | Low    | Low (framing)    |
+| QUIC      | Very High | Very Low| Medium    | Medium | Low (UDP)        |
+| Memory    | Very High | Minimal | Minimal   | Low    | None             |
+
+### Feature Comparison
+
+| Feature                  | TCP | TLS | WebSocket | QUIC | Memory |
+|--------------------------|-----|-----|-----------|------|--------|
+| Encryption               | ❌  | ✅  | Optional  | ✅   | N/A    |
+| Browser Compatible       | ❌  | ❌  | ✅        | ⚠️   | ❌     |
+| Connection Migration     | ❌  | ❌  | ❌        | ✅   | N/A    |
+| 0-RTT Handshake         | ❌  | ⚠️  | ❌        | ✅   | N/A    |
+| Stream Multiplexing      | ❌  | ❌  | ❌        | ✅   | N/A    |
+| Firewall Friendly        | ✅  | ✅  | ✅        | ⚠️   | N/A    |
+| Production Ready         | ✅  | ✅  | ✅        | ✅   | ❌     |
+
+Legend: ✅ Yes, ❌ No, ⚠️ Partial/Limited, N/A Not Applicable
+
+### When to Use Each Transport
+
+**TCP:**
+- ✅ General-purpose RPC
+- ✅ Internal microservices
+- ✅ Low-latency requirements
+- ✅ Simple deployments
+- ❌ Public internet (use TLS instead)
+
+**TLS:**
+- ✅ Production deployments
+- ✅ Public internet
+- ✅ Security requirements
+- ✅ Compliance (HIPAA, PCI-DSS)
+- ✅ Authentication needs
+- ❌ Local development (TCP is simpler)
+
+**WebSocket:**
+- ✅ Browser clients
+- ✅ Web applications
+- ✅ Real-time updates
+- ✅ Firewall traversal
+- ✅ HTTP/HTTPS infrastructure
+- ❌ High-performance mobile apps (use QUIC)
+
+**QUIC:**
+- ✅ Mobile applications
+- ✅ Unreliable networks (WiFi, cellular)
+- ✅ Low-latency gaming
+- ✅ High-performance RPC
+- ✅ Connection migration needs
+- ❌ Browser clients (use WebSocket)
+- ❌ Strict firewall environments
+
+**Memory:**
+- ✅ Unit testing
+- ✅ Integration testing
+- ✅ In-process IPC
+- ✅ Development
+- ❌ Production deployments
+
+### Example Use Cases
+
+**Web Application:**
+```rust
+// Server supports both traditional and browser clients
+let endpoint = EndpointBuilder::server(serializer)
+    .with_tcp_listener("0.0.0.0:8080")        // Backend services
+    .with_websocket_listener("0.0.0.0:8081")  // Browser clients
+    .with_responder("UserService", 1)
+    .build()
+    .await?;
+```
+
+**Mobile Application:**
+```rust
+// Client uses QUIC for connection migration
+let endpoint = EndpointBuilder::client(serializer)
+    .with_quic_caller("server", "api.example.com:4433")
+    .with_caller("UserService", 1)
+    .build()
+    .await?;
+```
+
+**Microservices:**
+```rust
+// Internal services use TLS for security
+let endpoint = EndpointBuilder::server(serializer)
+    .with_tls_listener("0.0.0.0:8443", tls_config)
+    .with_responder("UserService", 1)
+    .build()
+    .await?;
+```
+
+**Gaming:**
+```rust
+// Game client uses QUIC for low latency
+let endpoint = EndpointBuilder::client(serializer)
+    .with_quic_caller("game-server", "game.example.com:4433")
+    .with_caller("GameService", 1)
+    .build()
+    .await?;
 ```
 
 ## Migration from v0.1.0
