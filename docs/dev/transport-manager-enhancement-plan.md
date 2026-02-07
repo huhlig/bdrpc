@@ -946,13 +946,16 @@ impl<S: Serializer> EndpointBuilder<S> {
 **WebSocket:**
 - `tokio-tungstenite = "0.21"` - Async WebSocket implementation
 - `tungstenite = "0.21"` - WebSocket protocol
-- Optional: `flate2` for compression support
+- `futures-util = "0.3"` - Stream utilities
+- Optional: `flate2 = "1.0"` for per-message deflate compression
+- Optional: `native-tls` or `rustls-tls` for WSS support
 
 **QUIC:**
-- `quinn = "0.10"` - QUIC implementation
-- OR `wtransport = "0.1"` - WebTransport over QUIC
-- `rustls = "0.21"` - TLS for QUIC
+- `quinn = "0.10"` - QUIC implementation (preferred)
+- Alternative: `wtransport = "0.1"` - WebTransport over QUIC (for browser compatibility)
+- `rustls = "0.21"` - TLS 1.3 for QUIC
 - `rcgen = "0.11"` - Certificate generation for testing
+- `tokio = { version = "1.35", features = ["time", "sync"] }` - Runtime support
 
 #### Testing Strategy
 
@@ -990,14 +993,318 @@ impl<S: Serializer> EndpointBuilder<S> {
 - **Week 13:** QUIC implementation and testing
 - **Week 14:** Documentation, examples, and polish
 
+#### Implementation Details
+
+**WebSocket Transport Architecture:**
+```rust
+// File: bdrpc/src/transport/websocket.rs
+pub struct WebSocketTransport {
+    inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    config: WebSocketConfig,
+    local_addr: SocketAddr,
+    peer_addr: SocketAddr,
+}
+
+impl Transport for WebSocketTransport {
+    async fn send(&self, data: &[u8]) -> Result<(), TransportError> {
+        // Send as binary WebSocket message
+        self.inner.send(Message::Binary(data.to_vec())).await?;
+        Ok(())
+    }
+    
+    async fn recv(&self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        // Receive and handle WebSocket frames
+        match self.inner.next().await {
+            Some(Ok(Message::Binary(data))) => {
+                let len = data.len().min(buf.len());
+                buf[..len].copy_from_slice(&data[..len]);
+                Ok(len)
+            }
+            Some(Ok(Message::Ping(_))) => {
+                // Handle ping/pong automatically
+                self.handle_ping().await?;
+                self.recv(buf).await
+            }
+            _ => Err(TransportError::ConnectionClosed),
+        }
+    }
+}
+
+pub struct WebSocketListener {
+    listener: TcpListener,
+    config: WebSocketConfig,
+}
+
+impl TransportListener for WebSocketListener {
+    async fn accept(&self) -> Result<Box<dyn Transport>, TransportError> {
+        let (stream, addr) = self.listener.accept().await?;
+        let ws_stream = tokio_tungstenite::accept_async(stream).await?;
+        Ok(Box::new(WebSocketTransport::new(ws_stream, self.config.clone(), addr)))
+    }
+}
+```
+
+**QUIC Transport Architecture:**
+```rust
+// File: bdrpc/src/transport/quic.rs
+pub struct QuicTransport {
+    connection: quinn::Connection,
+    send_stream: Arc<Mutex<quinn::SendStream>>,
+    recv_stream: Arc<Mutex<quinn::RecvStream>>,
+    config: QuicConfig,
+}
+
+impl Transport for QuicTransport {
+    async fn send(&self, data: &[u8]) -> Result<(), TransportError> {
+        let mut stream = self.send_stream.lock().await;
+        // Write length prefix for framing
+        stream.write_u32(data.len() as u32).await?;
+        stream.write_all(data).await?;
+        Ok(())
+    }
+    
+    async fn recv(&self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        let mut stream = self.recv_stream.lock().await;
+        // Read length prefix
+        let len = stream.read_u32().await? as usize;
+        if len > buf.len() {
+            return Err(TransportError::BufferTooSmall);
+        }
+        stream.read_exact(&mut buf[..len]).await?;
+        Ok(len)
+    }
+}
+
+pub struct QuicListener {
+    endpoint: quinn::Endpoint,
+    config: QuicConfig,
+}
+
+impl TransportListener for QuicListener {
+    async fn accept(&self) -> Result<Box<dyn Transport>, TransportError> {
+        let conn = self.endpoint.accept().await
+            .ok_or(TransportError::ListenerClosed)?
+            .await?;
+        
+        // Open bidirectional stream for BDRPC
+        let (send, recv) = conn.open_bi().await?;
+        
+        Ok(Box::new(QuicTransport::new(conn, send, recv, self.config.clone())))
+    }
+}
+```
+
+**Configuration Structures:**
+```rust
+#[derive(Debug, Clone)]
+pub struct WebSocketConfig {
+    /// Maximum size of a single WebSocket frame
+    pub max_frame_size: usize,
+    /// Maximum size of a complete message
+    pub max_message_size: usize,
+    /// Enable per-message deflate compression
+    pub compression: bool,
+    /// Interval for sending ping frames (keepalive)
+    pub ping_interval: Duration,
+    /// Timeout for pong response
+    pub pong_timeout: Duration,
+    /// Accept unmasked frames (server-side only)
+    pub accept_unmasked_frames: bool,
+}
+
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        Self {
+            max_frame_size: 16 * 1024 * 1024, // 16 MB
+            max_message_size: 64 * 1024 * 1024, // 64 MB
+            compression: false, // Disabled by default for performance
+            ping_interval: Duration::from_secs(30),
+            pong_timeout: Duration::from_secs(10),
+            accept_unmasked_frames: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QuicConfig {
+    /// Maximum idle timeout before connection is closed
+    pub max_idle_timeout: Duration,
+    /// Interval for sending keepalive packets
+    pub keep_alive_interval: Duration,
+    /// Maximum number of concurrent bidirectional streams
+    pub max_concurrent_bidi_streams: u64,
+    /// Maximum number of concurrent unidirectional streams
+    pub max_concurrent_uni_streams: u64,
+    /// Enable 0-RTT connection establishment
+    pub enable_0rtt: bool,
+    /// Initial congestion window size
+    pub initial_window: u64,
+    /// Maximum UDP payload size
+    pub max_udp_payload_size: u16,
+    /// Enable connection migration
+    pub enable_migration: bool,
+}
+
+impl Default for QuicConfig {
+    fn default() -> Self {
+        Self {
+            max_idle_timeout: Duration::from_secs(60),
+            keep_alive_interval: Duration::from_secs(15),
+            max_concurrent_bidi_streams: 100,
+            max_concurrent_uni_streams: 100,
+            enable_0rtt: true,
+            initial_window: 128 * 1024, // 128 KB
+            max_udp_payload_size: 1350, // Safe for most networks
+            enable_migration: true,
+        }
+    }
+}
+```
+
+**Error Handling:**
+```rust
+// Add to bdrpc/src/transport/error.rs
+#[derive(Debug, thiserror::Error)]
+pub enum TransportError {
+    // ... existing variants ...
+    
+    #[error("WebSocket error: {0}")]
+    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
+    
+    #[error("QUIC connection error: {0}")]
+    QuicConnection(#[from] quinn::ConnectionError),
+    
+    #[error("QUIC stream error: {0}")]
+    QuicStream(#[from] quinn::WriteError),
+    
+    #[error("WebSocket handshake failed")]
+    WebSocketHandshakeFailed,
+    
+    #[error("QUIC endpoint error: {0}")]
+    QuicEndpoint(String),
+}
+```
+
+#### Browser Integration
+
+**JavaScript WebSocket Client Example:**
+```javascript
+// File: examples/browser_chat/client.js
+class BdrpcWebSocketClient {
+    constructor(url) {
+        this.ws = new WebSocket(url);
+        this.ws.binaryType = 'arraybuffer';
+        this.messageHandlers = new Map();
+        
+        this.ws.onmessage = (event) => {
+            const data = new Uint8Array(event.data);
+            this.handleMessage(data);
+        };
+    }
+    
+    async send(channelId, message) {
+        // Serialize message using MessagePack or JSON
+        const encoded = this.serialize(channelId, message);
+        this.ws.send(encoded);
+    }
+    
+    onMessage(channelId, handler) {
+        this.messageHandlers.set(channelId, handler);
+    }
+    
+    serialize(channelId, message) {
+        // Implement BDRPC framing protocol
+        // Format: [length: u32][channel_id: u64][payload: bytes]
+        const payload = JSON.stringify(message);
+        const buffer = new ArrayBuffer(4 + 8 + payload.length);
+        const view = new DataView(buffer);
+        
+        view.setUint32(0, 8 + payload.length, false); // Big-endian
+        view.setBigUint64(4, BigInt(channelId), false);
+        
+        const encoder = new TextEncoder();
+        const payloadBytes = encoder.encode(payload);
+        new Uint8Array(buffer, 12).set(payloadBytes);
+        
+        return buffer;
+    }
+}
+
+// Usage
+const client = new BdrpcWebSocketClient('ws://localhost:8080');
+client.onMessage(1, (msg) => console.log('Received:', msg));
+client.send(1, { type: 'hello', data: 'world' });
+```
+
+#### Mobile App Patterns
+
+**QUIC Connection Migration Example:**
+```rust
+// File: examples/quic_mobile_client.rs
+use bdrpc::prelude::*;
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Configure QUIC with connection migration
+    let quic_config = QuicConfig {
+        enable_migration: true,
+        max_idle_timeout: Duration::from_secs(120),
+        keep_alive_interval: Duration::from_secs(10),
+        ..Default::default()
+    };
+    
+    let mut endpoint = EndpointBuilder::client(PostcardSerializer::default())
+        .with_quic_caller("server", "server.example.com:4433", quic_config)
+        .with_caller("ChatService", 1)
+        .build()
+        .await?;
+    
+    // Connect
+    let conn = endpoint.connect_transport("server").await?;
+    
+    // Connection will automatically migrate when network changes
+    // (e.g., WiFi to cellular, or between cell towers)
+    
+    // Use channels normally
+    let (sender, mut receiver) = endpoint
+        .get_channels::<ChatMessage>(&conn.id(), "ChatService")
+        .await?;
+    
+    // Send messages - connection migration is transparent
+    loop {
+        sender.send(ChatMessage::new("Hello")).await?;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+```
+
 #### Success Criteria
 
 - [ ] WebSocket transport fully functional
+  - [ ] Binary message support
+  - [ ] Ping/pong keepalive working
+  - [ ] Compression support (optional)
+  - [ ] WSS (secure WebSocket) support
+  - [ ] Browser client compatibility verified
 - [ ] QUIC transport fully functional
+  - [ ] Bidirectional streams working
+  - [ ] 0-RTT connection establishment
+  - [ ] Connection migration support
+  - [ ] Congestion control tuning
+  - [ ] Mobile network testing
 - [ ] All tests passing (500+ tests expected)
 - [ ] Performance goals met
+  - [ ] WebSocket: >1M msg/s
+  - [ ] QUIC: >2M msg/s with 0-RTT
 - [ ] Browser client example works
+  - [ ] JavaScript client library
+  - [ ] Chat application demo
+  - [ ] Real-time updates working
 - [ ] Documentation complete
+  - [ ] Transport guides written
+  - [ ] API documentation complete
+  - [ ] Migration examples provided
 - [ ] Ready for integration into v0.2.0
 
 ---
