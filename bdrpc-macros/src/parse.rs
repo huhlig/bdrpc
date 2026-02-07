@@ -258,14 +258,14 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodDef> {
 
     // Validate return type - must be async or return impl Future
     let return_type = method.sig.output.clone();
-    
+
     if !is_async {
         // Check if return type is impl Future
         let is_future = match &return_type {
             ReturnType::Type(_, ty) => is_impl_future(ty),
             ReturnType::Default => false,
         };
-        
+
         if !is_future {
             return Err(Error::new_spanned(
                 &method.sig,
@@ -292,9 +292,11 @@ fn is_impl_future(ty: &Type) -> bool {
             // Check if any bound is Future
             impl_trait.bounds.iter().any(|bound| {
                 if let syn::TypeParamBound::Trait(trait_bound) = bound {
-                    trait_bound.path.segments.iter().any(|seg| {
-                        seg.ident == "Future"
-                    })
+                    trait_bound
+                        .path
+                        .segments
+                        .iter()
+                        .any(|seg| seg.ident == "Future")
                 } else {
                     false
                 }
@@ -315,17 +317,14 @@ fn contains_future_in_path(type_path: &syn::TypePath) -> bool {
         if segment.ident == "Future" {
             return true;
         }
-        
+
         // Check generic arguments (e.g., Pin<Box<dyn Future>>)
         if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
             for arg in &args.args {
-                match arg {
-                    syn::GenericArgument::Type(inner_ty) => {
-                        if contains_future_in_type(inner_ty) {
-                            return true;
-                        }
+                if let syn::GenericArgument::Type(inner_ty) = arg {
+                    if contains_future_in_type(inner_ty) {
+                        return true;
                     }
-                    _ => {}
                 }
             }
         }
@@ -341,7 +340,11 @@ fn contains_future_in_type(ty: &Type) -> bool {
             // Check dyn Future
             trait_obj.bounds.iter().any(|bound| {
                 if let syn::TypeParamBound::Trait(trait_bound) = bound {
-                    trait_bound.path.segments.iter().any(|seg| seg.ident == "Future")
+                    trait_bound
+                        .path
+                        .segments
+                        .iter()
+                        .any(|seg| seg.ident == "Future")
                 } else {
                     false
                 }
@@ -351,7 +354,11 @@ fn contains_future_in_type(ty: &Type) -> bool {
             // Check impl Future
             impl_trait.bounds.iter().any(|bound| {
                 if let syn::TypeParamBound::Trait(trait_bound) = bound {
-                    trait_bound.path.segments.iter().any(|seg| seg.ident == "Future")
+                    trait_bound
+                        .path
+                        .segments
+                        .iter()
+                        .any(|seg| seg.ident == "Future")
                 } else {
                     false
                 }

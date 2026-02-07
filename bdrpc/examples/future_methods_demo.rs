@@ -67,7 +67,8 @@ trait MixedStyleService {
     async fn async_greet(&self, name: String) -> Result<String, String>;
 
     /// Another impl Future method
-    fn future_uppercase(&self, text: String) -> impl Future<Output = Result<String, String>> + Send;
+    fn future_uppercase(&self, text: String)
+    -> impl Future<Output = Result<String, String>> + Send;
 }
 
 // ============================================================================
@@ -99,7 +100,10 @@ impl MixedStyleServiceServer for MyService {
         Ok(greeting)
     }
 
-    fn future_uppercase(&self, text: String) -> impl Future<Output = Result<String, String>> + Send {
+    fn future_uppercase(
+        &self,
+        text: String,
+    ) -> impl Future<Output = Result<String, String>> + Send {
         println!("  [Server] future_uppercase(\"{}\") called", text);
         async move {
             let result = text.to_uppercase();

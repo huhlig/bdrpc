@@ -18,8 +18,8 @@ fn extract_return_type(return_type: &ReturnType) -> TokenStream {
     match return_type {
         ReturnType::Default => quote! { () },
         ReturnType::Type(_, ty) => {
-            // Try to extract Output type from various Future patterns
-            if let Some(output_ty) = extract_future_output(&**ty) {
+            // Try to extract the Output type from various Future patterns
+            if let Some(output_ty) = extract_future_output(ty) {
                 return output_ty;
             }
             // If not a Future type, return the type as-is
@@ -44,9 +44,7 @@ fn extract_future_output(ty: &Type) -> Option<TokenStream> {
             None
         }
         // Pin<Box<dyn Future<Output = T>>> or similar
-        Type::Path(type_path) => {
-            extract_output_from_path(type_path)
-        }
+        Type::Path(type_path) => extract_output_from_path(type_path),
         _ => None,
     }
 }
@@ -76,14 +74,11 @@ fn extract_output_from_path(type_path: &syn::TypePath) -> Option<TokenStream> {
         // Check if this segment has generic arguments
         if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
             for arg in &args.args {
-                match arg {
-                    syn::GenericArgument::Type(inner_ty) => {
-                        // Recursively check inner types
-                        if let Some(output) = extract_future_output(inner_ty) {
-                            return Some(output);
-                        }
+                if let syn::GenericArgument::Type(inner_ty) = arg {
+                    // Recursively check inner types
+                    if let Some(output) = extract_future_output(inner_ty) {
+                        return Some(output);
                     }
-                    _ => {}
                 }
             }
         }
@@ -522,7 +517,7 @@ pub fn generate_server_dispatcher(service: &ServiceDef) -> TokenStream {
                     quote! { #name: #ty }
                 })
                 .collect();
-            
+
             // If the method is async, generate async fn
             // If it returns impl Future, preserve that signature
             if method.is_async {

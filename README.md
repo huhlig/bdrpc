@@ -219,6 +219,7 @@ BDRPC provides examples in two forms to demonstrate different approaches:
 | **dynamic_channels_service.rs** ⭐ | Multiplexing gateway with service macro    | System protocol, dynamic channel creation, type-safe multi-service gateway |
 | **dynamic_channels_manual.rs**    | Same gateway pattern with manual protocols | Full control over channel lifecycle, custom routing logic                  |
 | **network_chat.rs** ⭐             | Real network communication pattern         | Endpoint API, TCP transport, protocol negotiation                          |
+| **mtls_demo.rs** 🔐                | Mutual TLS configuration guide             | mTLS setup, client certificates, CA trust stores, security best practices  |
 | **advanced_channels.rs**          | Channel management techniques              | Channel lifecycle, error handling, cleanup                                 |
 | **service_macro_demo.rs**         | Detailed macro explanation                 | Code generation, dispatcher internals, best practices                      |
 
@@ -259,6 +260,9 @@ cargo run --example dynamic_channels_manual --features serde
 
 # Network communication (production pattern)
 cargo run --example network_chat --features serde
+
+# Security and TLS examples
+cargo run --example mtls_demo --features tls,serde
 ```
 
 #### 💡 Example Comparison
