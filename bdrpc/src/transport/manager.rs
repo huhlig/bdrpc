@@ -1355,14 +1355,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_connect_caller() {
+        // This test verifies that connect_caller properly rejects Memory transports
+        // since they can't be "connected" - they must be created as pairs
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "test-addr");
 
         manager.add_caller("test-caller".to_string(), config).await.unwrap();
         let result = manager.connect_caller("test-caller").await;
         
-        // For now, this returns a placeholder transport ID
-        assert!(result.is_ok());
+        // Memory transports should fail with InvalidConfiguration
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), TransportError::InvalidConfiguration { .. }));
     }
 
     #[tokio::test]
@@ -1459,8 +1462,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_connect_caller_creates_connection() {
+        // This test requires an actual TCP listener, so we create one first
+        use crate::transport::TcpTransport;
+        
+        let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        
+        // Spawn a task to accept one connection
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+        
         let manager = TransportManager::new();
-        let config = crate::transport::TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+        let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
         manager.add_caller("test".to_string(), config).await.unwrap();
         
         let transport_id = manager.connect_caller("test").await.unwrap();
@@ -1476,10 +1490,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_caller_state_transitions() {
-        use crate::transport::CallerState;
+        use crate::transport::{CallerState, TcpTransport};
+        
+        // Create a listener for the test
+        let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        
+        // Spawn a task to accept one connection
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
         
         let manager = TransportManager::new();
-        let config = crate::transport::TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+        let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
         manager.add_caller("test".to_string(), config).await.unwrap();
         
         // Initial state should be Disconnected
@@ -1499,6 +1522,7 @@ mod tests {
     #[tokio::test]
     async fn test_event_handler_on_connect() {
         use crate::channel::ChannelId;
+        use crate::transport::TcpTransport;
         use std::sync::atomic::{AtomicBool, Ordering};
         
         struct TestHandler {
@@ -1522,6 +1546,15 @@ mod tests {
             }
         }
         
+        // Create a listener for the test
+        let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        
+        // Spawn a task to accept one connection
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+        
         let connected_called = Arc::new(AtomicBool::new(false));
         let handler = Arc::new(TestHandler {
             connected_called: Arc::clone(&connected_called),
@@ -1530,7 +1563,7 @@ mod tests {
         let manager = TransportManager::new();
         manager.set_event_handler(handler).await;
         
-        let config = crate::transport::TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+        let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
         manager.add_caller("test".to_string(), config).await.unwrap();
         
         manager.connect_caller("test").await.unwrap();
@@ -1541,19 +1574,37 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_transport_connection_tcp() {
+        // This test requires an actual TCP listener
+        use crate::transport::TcpTransport;
+        
+        let listener = TcpTransport::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        
+        // Spawn a task to accept one connection
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+        
         let manager = TransportManager::new();
-        let config = crate::transport::TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+        let config = crate::transport::TransportConfig::new(TransportType::Tcp, addr.to_string());
         
         let result = manager.create_transport_connection(&config).await;
         assert!(result.is_ok());
+        let (transport_id, _transport) = result.unwrap();
+        assert!(transport_id.as_u64() > 0);
     }
 
     #[tokio::test]
     async fn test_create_transport_connection_memory() {
+        // Memory transports can't be "connected" - they must be created as pairs
         let manager = TransportManager::new();
         let config = crate::transport::TransportConfig::new(TransportType::Memory, "memory://test");
         
         let result = manager.create_transport_connection(&config).await;
-        assert!(result.is_ok());
+        // Should fail with InvalidConfiguration
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e, TransportError::InvalidConfiguration { .. }));
+        }
     }
 }

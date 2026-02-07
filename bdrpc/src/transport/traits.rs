@@ -169,9 +169,11 @@ impl TransportMetadata {
 ///         &self.metadata
 ///     }
 ///
-///     async fn shutdown(&mut self) -> Result<(), TransportError> {
-///         // Implement graceful shutdown
-///         Ok(())
+///     fn shutdown(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>> {
+///         Box::pin(async move {
+///             // Implement graceful shutdown
+///             Ok(())
+///         })
 ///     }
 /// }
 ///
