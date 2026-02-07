@@ -518,6 +518,136 @@ impl<S: Serializer> EndpointBuilder<S> {
         self
     }
 
+    /// Adds a WebSocket listener transport.
+    ///
+    /// This configures the endpoint to listen for incoming WebSocket
+    /// connections on the specified address. Requires the `websocket` feature.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let endpoint = EndpointBuilder::server(PostcardSerializer::default())
+    ///     .with_websocket_listener("0.0.0.0:8080")
+    ///     .with_responder("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "websocket")]
+    pub fn with_websocket_listener(mut self, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::WebSocket, addr);
+        self.transports.push(TransportRegistration {
+            name: format!("websocket-listener-{}", self.transports.len()),
+            config,
+            is_listener: true,
+        });
+        self
+    }
+
+    /// Adds a WebSocket caller transport.
+    ///
+    /// This configures the endpoint to connect to a remote WebSocket server.
+    /// The connection can be initiated later using `connect_transport()`.
+    /// Requires the `websocket` feature.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = EndpointBuilder::client(PostcardSerializer::default())
+    ///     .with_websocket_caller("main", "ws://127.0.0.1:8080")
+    ///     .with_caller("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// let conn = endpoint.connect_transport("main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "websocket")]
+    pub fn with_websocket_caller(mut self, name: impl Into<String>, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::WebSocket, addr);
+        self.transports.push(TransportRegistration {
+            name: name.into(),
+            config,
+            is_listener: false,
+        });
+        self
+    }
+
+    /// Adds a QUIC listener transport.
+    ///
+    /// This configures the endpoint to listen for incoming QUIC
+    /// connections on the specified address. Requires the `quic` feature.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let endpoint = EndpointBuilder::server(PostcardSerializer::default())
+    ///     .with_quic_listener("0.0.0.0:4433")
+    ///     .with_responder("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "quic")]
+    pub fn with_quic_listener(mut self, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::Quic, addr);
+        self.transports.push(TransportRegistration {
+            name: format!("quic-listener-{}", self.transports.len()),
+            config,
+            is_listener: true,
+        });
+        self
+    }
+
+    /// Adds a QUIC caller transport.
+    ///
+    /// This configures the endpoint to connect to a remote QUIC server.
+    /// The connection can be initiated later using `connect_transport()`.
+    /// Requires the `quic` feature.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::EndpointBuilder;
+    /// use bdrpc::serialization::PostcardSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = EndpointBuilder::client(PostcardSerializer::default())
+    ///     .with_quic_caller("main", "127.0.0.1:4433")
+    ///     .with_caller("UserService", 1)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// let conn = endpoint.connect_transport("main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "quic")]
+    pub fn with_quic_caller(mut self, name: impl Into<String>, addr: impl Into<String>) -> Self {
+        let config = TransportConfig::new(TransportType::Quic, addr);
+        self.transports.push(TransportRegistration {
+            name: name.into(),
+            config,
+            is_listener: false,
+        });
+        self
+    }
+
     /// Adds a custom transport configuration.
     ///
     /// This allows you to configure a transport with custom settings,
