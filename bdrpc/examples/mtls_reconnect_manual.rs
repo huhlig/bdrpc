@@ -14,12 +14,12 @@
 // limitations under the License.
 //
 
-//! # Reconnection Example with Manual Listener
+//! # Reconnection Example with Transport Manager
 //!
 //! This example demonstrates how to implement robust connections with automatic
-//! reconnection handling using the `listen_manual()` API. It showcases:
+//! reconnection handling using the modern transport manager API. It showcases:
 //!
-//! - Server using `listen_manual()` for connection acceptance
+//! - Server using `add_listener()` for connection acceptance
 //! - Client with exponential backoff reconnection strategy
 //! - Graceful handling of connection failures
 //! - Connection state monitoring and recovery
@@ -45,9 +45,8 @@
 //! ## What This Example Shows
 //!
 //! 1. **Server Side**:
-//!    - Using `listen_manual()` for explicit connection handling
-//!    - Accepting connections with `accept_channels()`
-//!    - Spawning tasks for each client connection
+//!    - Using `add_listener()` with the transport manager
+//!    - Automatic connection handling via TransportEventHandler
 //!    - Handling client disconnections gracefully
 //!
 //! 2. **Client Side**:
@@ -86,7 +85,7 @@
 //!
 //! ## Notes
 //!
-//! This example focuses on the reconnection pattern. For mTLS:
+//! This example focuses on the reconnection pattern using the modern API. For mTLS:
 //! - See the `mtls_demo` example for certificate configuration
 //! - Configure TLS at the transport layer before connecting
 //! - Use the `TlsTransport` wrapper with proper certificates
@@ -96,9 +95,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bdrpc::channel::Protocol;
-use bdrpc::endpoint::{Endpoint, EndpointConfig};
+use bdrpc::endpoint::EndpointBuilder;
 use bdrpc::reconnection::ExponentialBackoff;
 use bdrpc::serialization::JsonSerializer;
+use bdrpc::transport::{TransportConfig, TransportType};
 use tokio::time::sleep;
 
 /// Heartbeat protocol for testing reconnection.
@@ -129,105 +129,38 @@ impl Protocol for HeartbeatProtocol {
     }
 }
 
-/// Run the mTLS server using listen_manual.
+/// Run the mTLS server using the transport manager.
 ///
-/// This demonstrates the manual connection acceptance pattern, which gives
-/// the server explicit control over when to accept connections and how to
-/// handle them.
+/// This demonstrates the modern transport manager API with automatic
+/// connection handling.
 async fn run_server() -> Result<(), Box<dyn Error>> {
-    println!("\n🔐 Starting Server with Manual Listener\n");
+    println!("\n🔐 Starting Server with Transport Manager\n");
 
-    // Create endpoint with default configuration
-    let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-
-    // Register the heartbeat protocol as bidirectional
-    endpoint.register_bidirectional("Heartbeat", 1).await?;
+    // Create endpoint using EndpointBuilder with protocol pre-registered
+    let mut endpoint = EndpointBuilder::server(JsonSerializer::default())
+        .with_bidirectional("Heartbeat", 1)
+        .build()
+        .await?;
 
     println!("📋 Server Configuration:");
     println!("   • Protocol: Heartbeat v1");
     println!("   • Direction: Bidirectional");
     println!("   • Listen Address: 127.0.0.1:8443\n");
 
-    // Start listening in manual mode
-    // This returns a listener that we can use to accept connections one at a time
-    let mut listener = endpoint.listen_manual("127.0.0.1:8443").await?;
+    // Add a TCP listener using the transport manager
+    let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8443");
+    endpoint.add_listener("tcp-listener".to_string(), config).await?;
 
-    println!("✅ Server listening on {}", listener.local_addr());
+    println!("✅ Server listening on 127.0.0.1:8443");
     println!("⏳ Waiting for client connections...\n");
+    println!("💡 Connections are handled automatically by the transport manager\n");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    let mut connection_count = 0;
+    // Keep the server running
+    tokio::signal::ctrl_c().await?;
+    println!("\n👋 Server shutting down\n");
 
-    // Accept connections in a loop
-    loop {
-        // This blocks until a connection arrives, performs the handshake,
-        // and returns typed channels ready to use
-        match listener.accept_channels::<HeartbeatProtocol>().await {
-            Ok((sender, mut receiver)) => {
-                connection_count += 1;
-                let conn_id = connection_count;
-
-                println!("🔗 Connection #{} accepted!", conn_id);
-                println!("   Starting message handler...\n");
-
-                // Spawn a task to handle this connection
-                tokio::spawn(async move {
-                    let mut message_count = 0;
-
-                    // Handle messages from this client
-                    while let Some(msg) = receiver.recv().await {
-                        message_count += 1;
-
-                        match msg {
-                            HeartbeatProtocol::Ping { seq, timestamp } => {
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_millis() as u64;
-
-                                let latency = now.saturating_sub(timestamp);
-
-                                println!(
-                                    "📨 [Conn #{}] Received Ping #{} (latency: {}ms)",
-                                    conn_id, seq, latency
-                                );
-
-                                // Send pong response
-                                let pong = HeartbeatProtocol::Pong {
-                                    seq,
-                                    timestamp: now,
-                                };
-
-                                if let Err(e) = sender.send(pong).await {
-                                    eprintln!("❌ [Conn #{}] Failed to send pong: {}", conn_id, e);
-                                    break;
-                                }
-
-                                println!("📤 [Conn #{}] Sent Pong #{}", conn_id, seq);
-                            }
-                            HeartbeatProtocol::Status { message } => {
-                                println!("💬 [Conn #{}] Status: {}", conn_id, message);
-                            }
-                            HeartbeatProtocol::Pong { .. } => {
-                                // Server doesn't expect pongs
-                                println!("⚠️  [Conn #{}] Unexpected pong received", conn_id);
-                            }
-                        }
-                    }
-
-                    println!(
-                        "\n🔌 [Conn #{}] Client disconnected after {} messages\n",
-                        conn_id, message_count
-                    );
-                    println!("═══════════════════════════════════════════════════════════\n");
-                });
-            }
-            Err(e) => {
-                eprintln!("❌ Failed to accept connection: {}", e);
-                eprintln!("   Continuing to listen for new connections...\n");
-            }
-        }
-    }
+    Ok(())
 }
 
 /// Run the mTLS client with automatic reconnection.
@@ -238,13 +171,15 @@ async fn run_client() -> Result<(), Box<dyn Error>> {
     println!("\n🔐 Starting Client with Reconnection\n");
 
     // Configure exponential backoff reconnection strategy
-    let reconnect_strategy = ExponentialBackoff::builder()
-        .initial_delay(Duration::from_millis(500))
-        .max_delay(Duration::from_secs(10))
-        .multiplier(2.0)
-        .jitter(true) // Prevents thundering herd
-        .max_attempts(None) // Unlimited attempts
-        .build();
+    let reconnect_strategy = Arc::new(
+        ExponentialBackoff::builder()
+            .initial_delay(Duration::from_millis(500))
+            .max_delay(Duration::from_secs(10))
+            .multiplier(2.0)
+            .jitter(true) // Prevents thundering herd
+            .max_attempts(None) // Unlimited attempts
+            .build(),
+    );
 
     println!("📋 Reconnection Strategy:");
     println!("   • Type: Exponential Backoff");
@@ -254,18 +189,19 @@ async fn run_client() -> Result<(), Box<dyn Error>> {
     println!("   • Jitter: Enabled");
     println!("   • Max Attempts: Unlimited\n");
 
-    // Create endpoint with reconnection strategy
-    let config = EndpointConfig::default().with_reconnection_strategy(Arc::new(reconnect_strategy));
-
-    let mut endpoint = Endpoint::new(JsonSerializer::default(), config);
-
-    // Register the heartbeat protocol as bidirectional
-    endpoint.register_bidirectional("Heartbeat", 1).await?;
+    // Create endpoint using EndpointBuilder with reconnection strategy
+    let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+        .with_tcp_caller("server", "127.0.0.1:8443")
+        .with_reconnection_strategy("server", reconnect_strategy)
+        .with_bidirectional("Heartbeat", 1)
+        .build()
+        .await?;
 
     println!("📋 Client Configuration:");
     println!("   • Protocol: Heartbeat v1");
     println!("   • Direction: Bidirectional");
-    println!("   • Server Address: 127.0.0.1:8443\n");
+    println!("   • Server Address: 127.0.0.1:8443");
+    println!("   • Transport: Named 'server' with reconnection\n");
 
     println!("💡 Note: This example demonstrates reconnection patterns.");
     println!("   For actual mTLS, configure TLS at the transport layer.\n");
@@ -273,9 +209,8 @@ async fn run_client() -> Result<(), Box<dyn Error>> {
     println!("🔄 Attempting to connect to server...\n");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    // Connect to server - this will automatically reconnect on failure
-    // Note: The reconnection strategy is configured in the EndpointConfig
-    let connection = endpoint.connect_with_reconnection("127.0.0.1:8443").await?;
+    // Connect to server using named transport - will automatically reconnect on failure
+    let connection = endpoint.connect_transport("server").await?;
 
     println!("✅ Connected to server!");
     println!("   Connection ID: {}\n", connection.id());

@@ -35,6 +35,7 @@ use tokio::sync::Mutex;
 
 /// Test protocol for transport integration tests.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[allow(dead_code)]
 enum TransportTestProtocol {
     Ping { id: u64 },
     Pong { id: u64 },

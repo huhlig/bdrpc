@@ -310,8 +310,7 @@ async fn test_all_transports_large_messages() {
 #[cfg(all(feature = "websocket", feature = "quic"))]
 async fn test_all_transports_concurrent_connections() {
     use bdrpc::transport::{
-        QuicConfig, QuicListener, QuicTransport, TcpTransport, WebSocketConfig, WebSocketListener,
-        WebSocketTransport,
+        TcpTransport,
     };
 
     // Test TCP concurrent connections

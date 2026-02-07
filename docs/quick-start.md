@@ -144,14 +144,15 @@ use bdrpc::serialization::PostcardSerializer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create client endpoint with builder pattern
-    let client = EndpointBuilder::client(PostcardSerializer::default())
+    // Create client endpoint with builder pattern and named transport
+    let mut client = EndpointBuilder::client(PostcardSerializer::default())
+        .with_tcp_caller("server", "127.0.0.1:8080")
         .with_caller("Calculator", 1)
         .build()
         .await?;
     
-    // Connect to server
-    let connection = client.connect("127.0.0.1:8080").await?;
+    // Connect to server using the named transport
+    let connection = client.connect_transport("server").await?;
     println!("Connected to calculator server");
     
     // Create channel and get the generated client stub

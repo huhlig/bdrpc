@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Send test messages
-    let test_messages = vec![
+    let test_messages = [
         "Hello, QUIC!",
         "This is a test message",
         "QUIC provides 0-RTT and connection migration",

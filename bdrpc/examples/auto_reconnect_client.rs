@@ -121,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Get channels for communication
             let (sender, mut receiver) = endpoint
-                .get_channels::<EchoProtocol>(&connection.id(), "Echo")
+                .get_channels::<EchoProtocol>(connection.id(), "Echo")
                 .await?;
 
             // Send some test messages

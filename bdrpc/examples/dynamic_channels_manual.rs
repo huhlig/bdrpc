@@ -88,7 +88,7 @@
 //! ```
 
 use bdrpc::channel::{Channel, ChannelId, Protocol};
-use bdrpc::endpoint::{Endpoint, EndpointConfig};
+use bdrpc::endpoint::EndpointBuilder;
 use bdrpc::serialization::JsonSerializer;
 use std::collections::HashMap;
 use std::error::Error;
@@ -247,25 +247,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("🔧 PART 2: Setting Up the Multiplexing Gateway");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    println!("Step 1: Create gateway endpoint");
-    let config = EndpointConfig::default().with_endpoint_id("multiplexing-gateway".to_string());
-    let mut gateway = Endpoint::new(JsonSerializer::default(), config);
+    println!("Step 1: Create gateway endpoint using EndpointBuilder");
+    let gateway = EndpointBuilder::server(JsonSerializer::default())
+        .configure(|config| config.with_endpoint_id("multiplexing-gateway".to_string()))
+        .with_bidirectional("AuthProtocol", 1)
+        .with_bidirectional("DataProtocol", 1)
+        .with_bidirectional("LogProtocol", 1)
+        .build()
+        .await?;
     println!("   ✅ Gateway endpoint created (ID: {})", gateway.id());
-    println!("   ✅ System channel (ID: 0) automatically available\n");
-
-    println!("Step 2: Register supported protocols");
-    println!("   The gateway supports multiple backend services:");
-
-    gateway.register_bidirectional("AuthProtocol", 1).await?;
+    println!("   ✅ System channel (ID: 0) automatically available");
     println!("   ✅ AuthProtocol registered (version 1)");
-
-    gateway.register_bidirectional("DataProtocol", 1).await?;
     println!("   ✅ DataProtocol registered (version 1)");
-
-    gateway.register_bidirectional("LogProtocol", 1).await?;
     println!("   ✅ LogProtocol registered (version 1)\n");
 
-    println!("Step 3: Initialize gateway state");
+    println!("Step 2: Initialize gateway state");
     let state: SharedState = Arc::new(RwLock::new(GatewayState::new()));
     println!("   ✅ Gateway state initialized\n");
 

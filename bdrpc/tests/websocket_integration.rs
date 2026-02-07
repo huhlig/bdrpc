@@ -381,7 +381,8 @@ async fn test_websocket_binary_patterns() {
         .expect("Failed to connect");
 
     // Test various binary patterns
-    let patterns = vec![
+    #[allow(clippy::useless_vec)]
+    let patterns: Vec<Vec<u8>> = vec![
         vec![0x00; 100],                // All zeros
         vec![0xFF; 100],                // All ones
         (0..=255).collect::<Vec<u8>>(), // Sequential bytes

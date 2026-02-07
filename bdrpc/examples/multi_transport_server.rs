@@ -46,6 +46,7 @@ use tokio::sync::Mutex;
 
 /// Simple echo protocol - messages are echoed back to the sender.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
 enum EchoProtocol {
     /// A message to be echoed
     Echo(String),
@@ -74,6 +75,7 @@ impl Protocol for EchoProtocol {
 
 /// Server statistics
 #[derive(Default)]
+#[allow(dead_code)]
 struct ServerStats {
     total_messages: u64,
     active_connections: usize,
@@ -93,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Shared server statistics
     let stats = Arc::new(Mutex::new(ServerStats::default()));
-    let stats_clone = stats.clone();
+    let _stats_clone = stats.clone();
 
     // Create server endpoint with multiple transport listeners using the new builder API
     let endpoint = EndpointBuilder::server(JsonSerializer::default())
