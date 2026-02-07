@@ -342,24 +342,29 @@ impl Transport for TcpTransport {
     }
 
     #[cfg_attr(feature = "observability", instrument(skip(self), fields(transport_id = %self.metadata.id)))]
-    async fn shutdown(&mut self) -> Result<(), TransportError> {
-        use tokio::io::AsyncWriteExt;
+    fn shutdown(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>>
+    {
+        Box::pin(async move {
+            use tokio::io::AsyncWriteExt;
 
-        #[cfg(feature = "observability")]
-        info!("Shutting down TCP transport");
-
-        let result = self.stream.shutdown().await.map_err(|e| {
             #[cfg(feature = "observability")]
-            error!("Failed to shutdown: {}", e);
-            TransportError::Io { source: e }
-        });
+            info!("Shutting down TCP transport");
 
-        #[cfg(feature = "observability")]
-        if result.is_ok() {
-            info!("TCP transport shutdown complete");
-        }
+            let result = self.stream.shutdown().await.map_err(|e| {
+                #[cfg(feature = "observability")]
+                error!("Failed to shutdown: {}", e);
+                TransportError::Io { source: e }
+            });
 
-        result
+            #[cfg(feature = "observability")]
+            if result.is_ok() {
+                info!("TCP transport shutdown complete");
+            }
+
+            result
+        })
     }
 }
 

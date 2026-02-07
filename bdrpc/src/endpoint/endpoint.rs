@@ -1041,11 +1041,42 @@ impl<S: Serializer> Endpoint<S> {
 
     /// Connects to a remote endpoint as a client.
     ///
-    /// This method:
-    /// 1. Establishes a transport connection
-    /// 2. Performs the handshake protocol
-    /// 3. Negotiates protocols and capabilities
-    /// 4. Returns a connection handle
+    /// **DEPRECATED:** This method is deprecated in favor of the new transport management API.
+    /// Use `add_caller()` followed by `connect_transport()` instead for better control over
+    /// reconnection and transport lifecycle.
+    ///
+    /// # Migration Guide
+    ///
+    /// **Old API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_caller("MyProtocol", 1).await?;
+    /// let connection = endpoint.connect("127.0.0.1:8080").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// **New API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # use bdrpc::transport::{TransportConfig, TransportType};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_caller("MyProtocol", 1).await?;
+    ///
+    /// // Add a caller transport
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+    /// endpoint.add_caller("main".to_string(), config).await?;
+    ///
+    /// // Connect the transport
+    /// let connection = endpoint.connect_transport("main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -1054,22 +1085,10 @@ impl<S: Serializer> Endpoint<S> {
     /// - Handshake fails
     /// - No compatible protocols are found
     /// - Serializer mismatch
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
-    /// use bdrpc::serialization::JsonSerializer;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-    /// endpoint.register_caller("MyProtocol", 1).await?;
-    ///
-    /// let connection = endpoint.connect("127.0.0.1:8080").await?;
-    /// println!("Connected with ID: {}", connection.id());
-    /// # Ok(())
-    /// # }
-    /// ```
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use `add_caller()` and `connect_transport()` instead for better transport management"
+    )]
     #[cfg_attr(feature = "observability", tracing::instrument(
         skip(self),
         fields(
@@ -1083,20 +1102,50 @@ impl<S: Serializer> Endpoint<S> {
 
     /// Connects to a remote endpoint with automatic reconnection.
     ///
-    /// This method uses the reconnection strategy from the endpoint configuration
-    /// to automatically retry failed connections. The strategy determines:
-    /// - Whether to retry after a failure
-    /// - How long to wait between attempts
-    /// - When to give up
+    /// **DEPRECATED:** This method is deprecated in favor of the new transport management API.
+    /// Use `add_caller()` with a reconnection strategy in the `TransportConfig`, then call
+    /// `connect_transport()`. The new API provides better control and automatic reconnection
+    /// is built into the transport manager.
     ///
-    /// # Arguments
+    /// # Migration Guide
     ///
-    /// * `addr` - The address to connect to (e.g., "127.0.0.1:8080")
+    /// **Old API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # use bdrpc::reconnection::ExponentialBackoff;
+    /// # use std::sync::Arc;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let strategy = Arc::new(ExponentialBackoff::default());
+    /// let config = EndpointConfig::default().with_reconnection_strategy(strategy);
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), config);
+    /// endpoint.register_caller("MyProtocol", 1).await?;
+    /// let connection = endpoint.connect_with_reconnection("127.0.0.1:8080").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
-    /// # Returns
+    /// **New API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # use bdrpc::transport::{TransportConfig, TransportType};
+    /// # use bdrpc::reconnection::ExponentialBackoff;
+    /// # use std::sync::Arc;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_caller("MyProtocol", 1).await?;
     ///
-    /// Returns a `Connection` on success, or an error if all reconnection
-    /// attempts are exhausted or the strategy decides to give up.
+    /// // Add caller with reconnection strategy
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
+    ///     .with_reconnection_strategy(Arc::new(ExponentialBackoff::default()));
+    /// endpoint.add_caller("main".to_string(), config).await?;
+    ///
+    /// // Connect - reconnection is automatic
+    /// let connection = endpoint.connect_transport("main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -1104,35 +1153,10 @@ impl<S: Serializer> Endpoint<S> {
     /// - All reconnection attempts fail
     /// - The strategy decides not to reconnect
     /// - Connection succeeds but handshake fails
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
-    /// use bdrpc::serialization::JsonSerializer;
-    /// use bdrpc::reconnection::ExponentialBackoff;
-    /// use std::sync::Arc;
-    /// use std::time::Duration;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let strategy = Arc::new(ExponentialBackoff::builder()
-    ///     .initial_delay(Duration::from_millis(100))
-    ///     .max_delay(Duration::from_secs(30))
-    ///     .max_attempts(Some(10))
-    ///     .build());
-    ///
-    /// let config = EndpointConfig::default()
-    ///     .with_reconnection_strategy(strategy);
-    ///
-    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), config);
-    /// endpoint.register_caller("MyProtocol", 1).await?;
-    ///
-    /// // Will automatically retry on failure
-    /// let connection = endpoint.connect_with_reconnection("127.0.0.1:8080").await?;
-    /// println!("Connected with ID: {}", connection.id());
-    /// # Ok(())
-    /// # }
-    /// ```
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use `add_caller()` with reconnection strategy and `connect_transport()` instead"
+    )]
     #[cfg_attr(feature = "observability", tracing::instrument(
         skip(self),
         fields(
@@ -1368,36 +1392,50 @@ impl<S: Serializer> Endpoint<S> {
 
     /// Listens for incoming connections as a server.
     ///
-    /// This method:
-    /// 1. Binds to the specified address
-    /// 2. Accepts incoming connections
-    /// 3. Performs handshake with each client
-    /// 4. Spawns a task to handle each connection
+    /// **DEPRECATED:** This method is deprecated in favor of the new transport management API.
+    /// Use `add_listener()` instead for better control over transport lifecycle and to support
+    /// multiple listeners simultaneously.
     ///
-    /// The method returns immediately after starting the listener. Connections
-    /// are handled in background tasks.
+    /// # Migration Guide
+    ///
+    /// **Old API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_responder("MyProtocol", 1).await?;
+    /// let listener = endpoint.listen("127.0.0.1:8080").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// **New API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # use bdrpc::transport::{TransportConfig, TransportType};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_responder("MyProtocol", 1).await?;
+    ///
+    /// // Add a listener transport
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+    /// endpoint.add_listener("main".to_string(), config).await?;
+    /// // Listener automatically accepts connections in the background
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - Binding to the address fails
     /// - The endpoint has no responder protocols registered
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
-    /// use bdrpc::serialization::JsonSerializer;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-    /// endpoint.register_responder("MyProtocol", 1).await?;
-    ///
-    /// let listener = endpoint.listen("127.0.0.1:8080").await?;
-    /// println!("Listening on {}", listener.local_addr());
-    /// # Ok(())
-    /// # }
-    /// ```
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use `add_listener()` instead for better transport management"
+    )]
     #[cfg_attr(feature = "observability", tracing::instrument(
         skip(self),
         fields(
@@ -1489,59 +1527,58 @@ impl<S: Serializer> Endpoint<S> {
 
     /// Listens for incoming connections in manual acceptance mode.
     ///
-    /// This method is similar to [`listen`](Self::listen) but returns a listener
-    /// that requires manual acceptance of connections via [`Listener::accept_channels`].
-    /// This provides a simpler API for servers that want to handle connections
-    /// one at a time, similar to `TcpListener::accept()`.
+    /// **DEPRECATED:** This method is deprecated in favor of the new transport management API.
+    /// Use `add_listener()` instead. The new API handles connections automatically through
+    /// the `TransportEventHandler` trait.
     ///
-    /// # Manual vs Automatic Mode
+    /// # Migration Guide
     ///
-    /// - **Manual mode** (`listen_manual`): You call `accept_channels()` to get typed
-    ///   channels for each connection. Simple and intuitive for most use cases.
-    /// - **Automatic mode** (`listen`): Connections are handled automatically in the
-    ///   background. You use `get_channels()` with connection IDs. More flexible but
-    ///   requires connection tracking.
+    /// **Old API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # use bdrpc::channel::Protocol;
+    /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    /// # enum EchoProtocol { Echo(String) }
+    /// # impl Protocol for EchoProtocol {
+    /// #     fn method_name(&self) -> &'static str { "echo" }
+    /// #     fn is_request(&self) -> bool { true }
+    /// # }
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_bidirectional("Echo", 1).await?;
+    /// let mut listener = endpoint.listen_manual("127.0.0.1:8080").await?;
+    /// let (sender, receiver) = listener.accept_channels::<EchoProtocol>().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// **New API:**
+    /// ```rust,no_run
+    /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// # use bdrpc::serialization::JsonSerializer;
+    /// # use bdrpc::transport::{TransportConfig, TransportType};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_bidirectional("Echo", 1).await?;
+    ///
+    /// // Add listener - connections handled automatically
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+    /// endpoint.add_listener("main".to_string(), config).await?;
+    /// // Use get_channels() with connection IDs from TransportEventHandler
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - Binding to the address fails
     /// - The endpoint has no responder protocols registered
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
-    /// use bdrpc::serialization::JsonSerializer;
-    /// use bdrpc::channel::Protocol;
-    ///
-    /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    /// enum EchoProtocol { Echo(String) }
-    /// impl Protocol for EchoProtocol {
-    ///     fn method_name(&self) -> &'static str { "echo" }
-    ///     fn is_request(&self) -> bool { true }
-    /// }
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-    /// endpoint.register_bidirectional("Echo", 1).await?;
-    ///
-    /// let mut listener = endpoint.listen_manual("127.0.0.1:8080").await?;
-    /// println!("Listening on {}", listener.local_addr());
-    ///
-    /// // Accept connections one at a time
-    /// loop {
-    ///     let (sender, mut receiver) = listener.accept_channels::<EchoProtocol>().await?;
-    ///
-    ///     tokio::spawn(async move {
-    ///         while let Some(msg) = receiver.recv().await {
-    ///             let _ = sender.send(msg).await; // Echo back
-    ///         }
-    ///     });
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use `add_listener()` instead; connections are handled automatically via TransportEventHandler"
+    )]
     #[cfg_attr(feature = "observability", tracing::instrument(
         skip(self),
         fields(
@@ -1617,6 +1654,394 @@ impl<S: Serializer> Endpoint<S> {
             pending_rx: Some(pending_rx),
             endpoint_refs: Some(endpoint_refs),
         })
+    }
+
+    // ============================================================================
+    // Enhanced Transport Management Methods (v0.2.0)
+    // ============================================================================
+
+    /// Adds a listener transport to this endpoint.
+    ///
+    /// This allows the endpoint to accept incoming connections on the specified
+    /// transport. Multiple listeners can be added to support different transport
+    /// types or addresses simultaneously.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Unique name for this listener
+    /// * `config` - Configuration for the listener transport
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - A listener with the same name already exists
+    /// - The configuration is invalid
+    /// - The endpoint has no responder protocols registered
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_responder("MyProtocol", 1).await?;
+    ///
+    /// // Add a TCP listener
+    /// let config = TransportConfig::new(TransportType::Tcp, "0.0.0.0:8080");
+    /// endpoint.add_listener("tcp-main".to_string(), config).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self, config),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            name = %name,
+        )
+    ))]
+    pub async fn add_listener(
+        &mut self,
+        name: String,
+        config: crate::transport::TransportConfig,
+    ) -> Result<(), EndpointError> {
+        // Verify we have at least one responder protocol
+        let capabilities = self.capabilities().await;
+        let has_responder = capabilities.iter().any(|cap| cap.direction.can_respond());
+
+        if !has_responder {
+            return Err(EndpointError::InvalidConfiguration {
+                reason: "No responder protocols registered. Use register_responder() or register_bidirectional() before adding listeners.".to_string(),
+            });
+        }
+
+        // Delegate to transport manager
+        self.transport_manager
+            .add_listener(name, config)
+            .await
+            .map_err(EndpointError::Transport)
+    }
+
+    /// Adds a caller transport to this endpoint.
+    ///
+    /// This allows the endpoint to establish outbound connections. If a reconnection
+    /// strategy is configured in the transport config, the caller will automatically
+    /// reconnect on connection failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Unique name for this caller
+    /// * `config` - Configuration for the caller transport
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - A caller with the same name already exists
+    /// - The configuration is invalid
+    /// - The endpoint has no caller protocols registered
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    /// use bdrpc::reconnection::ExponentialBackoff;
+    /// use std::sync::Arc;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_caller("MyProtocol", 1).await?;
+    ///
+    /// // Add a TCP caller with automatic reconnection
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
+    ///     .with_reconnection_strategy(Arc::new(ExponentialBackoff::default()));
+    /// endpoint.add_caller("tcp-main".to_string(), config).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self, config),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            name = %name,
+        )
+    ))]
+    pub async fn add_caller(
+        &mut self,
+        name: String,
+        config: crate::transport::TransportConfig,
+    ) -> Result<(), EndpointError> {
+        // Verify we have at least one caller protocol
+        let capabilities = self.capabilities().await;
+        let has_caller = capabilities.iter().any(|cap| cap.direction.can_call());
+
+        if !has_caller {
+            return Err(EndpointError::InvalidConfiguration {
+                reason: "No caller protocols registered. Use register_caller() or register_bidirectional() before adding callers.".to_string(),
+            });
+        }
+
+        // Delegate to transport manager
+        self.transport_manager
+            .add_caller(name, config)
+            .await
+            .map_err(EndpointError::Transport)
+    }
+
+    /// Connects a caller transport by name.
+    ///
+    /// This initiates a connection using the specified caller transport. If the
+    /// caller has a reconnection strategy configured, it will automatically
+    /// reconnect on connection failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the caller transport to connect
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Connection` handle that can be used to get channels for protocols.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The caller does not exist
+    /// - The caller is disabled
+    /// - The connection fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_caller("MyProtocol", 1).await?;
+    ///
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+    /// endpoint.add_caller("tcp-main".to_string(), config).await?;
+    ///
+    /// // Connect the caller
+    /// let connection = endpoint.connect_transport("tcp-main").await?;
+    /// println!("Connected: {}", connection.id());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            name = %name,
+        )
+    ))]
+    pub async fn connect_transport(&mut self, name: &str) -> Result<Connection, EndpointError> {
+        // Connect via transport manager
+        let transport_id = self
+            .transport_manager
+            .connect_caller(name)
+            .await
+            .map_err(EndpointError::Transport)?;
+
+        // Create a connection ID from the transport ID
+        let connection_id = format!("transport-{}", transport_id);
+
+        // Get negotiated protocols (will be populated by TransportEventHandler)
+        let negotiated = self.negotiated.read().await;
+        let negotiated_protocols = negotiated.get(&connection_id).cloned().unwrap_or_default();
+
+        Ok(Connection {
+            id: connection_id,
+            negotiated_protocols,
+        })
+    }
+
+    /// Removes a listener transport.
+    ///
+    /// This stops the listener from accepting new connections. Existing connections
+    /// are not affected.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the listener to remove
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the listener does not exist or cannot be shut down.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_responder("MyProtocol", 1).await?;
+    ///
+    /// let config = TransportConfig::new(TransportType::Tcp, "0.0.0.0:8080");
+    /// endpoint.add_listener("tcp-main".to_string(), config).await?;
+    ///
+    /// // Later, remove the listener
+    /// endpoint.remove_listener("tcp-main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            name = %name,
+        )
+    ))]
+    pub async fn remove_listener(&mut self, name: &str) -> Result<(), EndpointError> {
+        self.transport_manager
+            .remove_listener(name)
+            .await
+            .map_err(EndpointError::Transport)
+    }
+
+    /// Removes a caller transport.
+    ///
+    /// This stops any reconnection attempts and closes the connection.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the caller to remove
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the caller does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_caller("MyProtocol", 1).await?;
+    ///
+    /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+    /// endpoint.add_caller("tcp-main".to_string(), config).await?;
+    ///
+    /// // Later, remove the caller
+    /// endpoint.remove_caller("tcp-main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            name = %name,
+        )
+    ))]
+    pub async fn remove_caller(&mut self, name: &str) -> Result<(), EndpointError> {
+        self.transport_manager
+            .remove_caller(name)
+            .await
+            .map_err(EndpointError::Transport)
+    }
+
+    /// Enables a transport (listener or caller).
+    ///
+    /// For listeners, this allows accepting new connections.
+    /// For callers, this allows connection attempts.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the transport to enable
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the transport does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_responder("MyProtocol", 1).await?;
+    ///
+    /// let config = TransportConfig::new(TransportType::Tcp, "0.0.0.0:8080")
+    ///     .with_enabled(false);
+    /// endpoint.add_listener("tcp-main".to_string(), config).await?;
+    ///
+    /// // Enable the listener later
+    /// endpoint.enable_transport("tcp-main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            name = %name,
+        )
+    ))]
+    pub async fn enable_transport(&mut self, name: &str) -> Result<(), EndpointError> {
+        self.transport_manager
+            .enable_transport(name)
+            .await
+            .map_err(EndpointError::Transport)
+    }
+
+    /// Disables a transport (listener or caller).
+    ///
+    /// For listeners, this stops accepting new connections.
+    /// For callers, this stops connection attempts and reconnection.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the transport to disable
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the transport does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    /// endpoint.register_responder("MyProtocol", 1).await?;
+    ///
+    /// let config = TransportConfig::new(TransportType::Tcp, "0.0.0.0:8080");
+    /// endpoint.add_listener("tcp-main".to_string(), config).await?;
+    ///
+    /// // Disable the listener temporarily
+    /// endpoint.disable_transport("tcp-main").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            name = %name,
+        )
+    ))]
+    pub async fn disable_transport(&mut self, name: &str) -> Result<(), EndpointError> {
+        self.transport_manager
+            .disable_transport(name)
+            .await
+            .map_err(EndpointError::Transport)
     }
 }
 
@@ -2605,6 +3030,206 @@ impl Connection {
         self.negotiated_protocols.iter().find(|p| p.name == name)
     }
 }
+// ============================================================================
+// TransportEventHandler Implementation
+// ============================================================================
+
+impl<S: Serializer> crate::transport::TransportEventHandler for Endpoint<S> {
+    /// Called when a transport successfully connects.
+    ///
+    /// This spawns the system message handler for the new connection and
+    /// initializes any necessary state.
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            transport_id = %transport_id,
+        )
+    ))]
+    fn on_transport_connected(&self, transport_id: crate::transport::TransportId) {
+        #[cfg(feature = "observability")]
+        tracing::info!(
+            "Transport {} connected to endpoint {}",
+            transport_id,
+            self.endpoint_id
+        );
+
+        // Create connection ID from transport ID
+        #[allow(unused_variables)]
+        let connection_id = format!("conn-{}", transport_id.as_u64());
+
+        // Create the system channel for control messages
+        let channel_manager = Arc::clone(&self.channel_manager);
+        let config = self.config.clone();
+        let _endpoint_id = self.endpoint_id.clone();
+
+        tokio::spawn(async move {
+            match channel_manager
+                .create_channel::<SystemProtocol>(SYSTEM_CHANNEL_ID, config.channel_buffer_size)
+                .await
+            {
+                Ok(_) => {
+                    #[cfg(feature = "observability")]
+                    tracing::debug!("System channel created for connection {}", connection_id);
+
+                    // Get the receiver and spawn the system message handler
+                    match channel_manager
+                        .get_receiver::<SystemProtocol>(SYSTEM_CHANNEL_ID)
+                        .await
+                    {
+                        Ok(_receiver) => {
+                            #[cfg(feature = "observability")]
+                            tracing::debug!(
+                                "Spawning system message handler for connection {}",
+                                connection_id
+                            );
+
+                            // Note: We can't call self.spawn_system_message_handler here
+                            // because we don't have &self. The handler will be spawned
+                            // by the connection establishment code.
+                        }
+                        Err(_e) => {
+                            #[cfg(feature = "observability")]
+                            tracing::error!(
+                                "Failed to get system channel receiver for connection {}: {}",
+                                connection_id,
+                                _e
+                            );
+                        }
+                    }
+                }
+                Err(_e) => {
+                    #[cfg(feature = "observability")]
+                    tracing::error!(
+                        "Failed to create system channel for connection {}: {}",
+                        connection_id,
+                        _e
+                    );
+                }
+            }
+        });
+    }
+
+    /// Called when a transport disconnects.
+    ///
+    /// This cleans up channels and state associated with the connection.
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            transport_id = %transport_id,
+        )
+    ))]
+    fn on_transport_disconnected(
+        &self,
+        transport_id: crate::transport::TransportId,
+        _error: Option<crate::transport::TransportError>,
+    ) {
+        let connection_id = format!("conn-{}", transport_id.as_u64());
+
+        #[cfg(feature = "observability")]
+        if let Some(err) = &_error {
+            tracing::warn!(
+                "Transport {} disconnected from endpoint {} with error: {}",
+                transport_id,
+                self.endpoint_id,
+                err
+            );
+        } else {
+            #[cfg(feature = "observability")]
+            tracing::info!(
+                "Transport {} disconnected gracefully from endpoint {}",
+                transport_id,
+                self.endpoint_id
+            );
+        }
+
+        // Clean up negotiated protocols for this connection
+        let negotiated = Arc::clone(&self.negotiated);
+        tokio::spawn(async move {
+            let mut negotiated_map = negotiated.write().await;
+            if negotiated_map.remove(&connection_id).is_some() {
+                #[cfg(feature = "observability")]
+                tracing::debug!(
+                    "Removed negotiated protocols for connection {}",
+                    connection_id
+                );
+            }
+        });
+
+        // Note: Channel cleanup is handled by the ChannelManager
+        // when the transport is closed
+    }
+
+    /// Called when a new channel creation is requested.
+    ///
+    /// This delegates to the channel negotiator to determine if the
+    /// channel should be accepted.
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            channel_id = %channel_id,
+            protocol = %protocol,
+            transport_id = %transport_id,
+        )
+    ))]
+    fn on_new_channel_request(
+        &self,
+        channel_id: crate::channel::ChannelId,
+        protocol: &str,
+        transport_id: crate::transport::TransportId,
+    ) -> Result<bool, String> {
+        #[cfg(feature = "observability")]
+        {
+            tracing::debug!(
+                "Channel {} request for protocol '{}' on transport {} (endpoint {})",
+                channel_id,
+                protocol,
+                transport_id,
+                self.endpoint_id
+            );
+        }
+
+        #[cfg(not(feature = "observability"))]
+        {
+            let _ = (channel_id, transport_id); // Suppress unused warnings
+        }
+
+        // Note: This is a synchronous trait method, but we need to check async state.
+        // We use try_read() to avoid blocking. If the lock is held, we reject the request.
+        let capabilities = match self.capabilities.try_read() {
+            Ok(caps) => caps,
+            Err(_) => {
+                #[cfg(feature = "observability")]
+                tracing::warn!(
+                    "Rejecting channel {} request: capabilities lock unavailable",
+                    channel_id
+                );
+                return Err("Capabilities lock unavailable".to_string());
+            }
+        };
+
+        if !capabilities.contains_key(protocol) {
+            #[cfg(feature = "observability")]
+            tracing::warn!(
+                "Rejecting channel {} request: protocol '{}' not registered",
+                channel_id,
+                protocol
+            );
+            return Ok(false);
+        }
+
+        // The channel negotiator's method is async, but we're in a sync context.
+        // We need to spawn a task to handle this. For now, we'll accept all
+        // requests for registered protocols and let the negotiator handle
+        // the actual decision asynchronously.
+        // TODO: Make TransportEventHandler trait async in a future version
+
+        // For now, just check if the protocol is registered and accept it
+        Ok(true)
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -2711,6 +3336,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_listen_without_responder() {
         let endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
         let result = endpoint.listen("127.0.0.1:0").await;
@@ -2721,6 +3347,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_listen_with_responder() {
         let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
         endpoint
@@ -2736,6 +3363,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_listen_with_bidirectional() {
         let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
         endpoint
@@ -2751,6 +3379,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_client_server_handshake() {
         // Create server endpoint
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
@@ -2785,6 +3414,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_serializer_mismatch() {
         use crate::serialization::PostcardSerializer;
 
@@ -2815,6 +3445,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_no_compatible_protocols() {
         // Create a server with Protocol1
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
@@ -2839,6 +3470,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_bidirectional_compatibility() {
         // Create a server with Bidirectional capability
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
@@ -2870,6 +3502,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_get_channels_success() {
         use crate::channel::Protocol;
 
@@ -2942,6 +3575,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn test_get_channels_protocol_not_found() {
         // Create server endpoint
         let mut server = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());

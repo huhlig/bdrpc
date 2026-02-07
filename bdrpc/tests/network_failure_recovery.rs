@@ -55,6 +55,7 @@ impl Protocol for TestProtocol {
 
 /// Test that connection failure is properly detected and reported.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_connection_refused_error() {
     let serializer = JsonSerializer::default();
     let config = EndpointConfig::default();
@@ -75,6 +76,7 @@ async fn test_connection_refused_error() {
 
 /// Test that server shutdown is detected by client.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_server_shutdown_detection() {
     let serializer = JsonSerializer::default();
     let config = EndpointConfig::default();
@@ -113,6 +115,7 @@ async fn test_server_shutdown_detection() {
 
 /// Test that abrupt connection drop is detected.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_abrupt_connection_drop() {
     let serializer = JsonSerializer::default();
     let config = EndpointConfig::default();
@@ -151,6 +154,7 @@ async fn test_abrupt_connection_drop() {
 
 /// Test timeout during channel creation.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_channel_creation_timeout() {
     let serializer = JsonSerializer::default();
     let config = EndpointConfig {
@@ -194,6 +198,7 @@ async fn test_channel_creation_timeout() {
 
 /// Test reconnection after connection loss.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_reconnection_after_connection_loss() {
     let connection_count = Arc::new(Mutex::new(0));
     let count_clone = connection_count.clone();
@@ -244,6 +249,7 @@ async fn test_reconnection_after_connection_loss() {
 
 /// Test that multiple concurrent connection failures are handled correctly.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_concurrent_connection_failures() {
     // Try to connect to multiple non-existent servers concurrently
     let mut handles = vec![];
@@ -276,6 +282,7 @@ async fn test_concurrent_connection_failures() {
 
 /// Test graceful handling of partial data transmission.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_partial_data_transmission() {
     // Start server that sends partial data then closes
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -363,6 +370,7 @@ async fn test_exponential_backoff_reconnection() {
 
 /// Test that connection state is properly cleaned up after failure.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_connection_cleanup_after_failure() {
     let serializer = JsonSerializer::default();
     let config = EndpointConfig::default();
@@ -388,6 +396,7 @@ async fn test_connection_cleanup_after_failure() {
 
 /// Test handling of slow network conditions.
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_slow_network_handling() {
     let serializer = JsonSerializer::default();
     let config = EndpointConfig {

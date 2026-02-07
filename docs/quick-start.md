@@ -8,11 +8,13 @@ Add BDRPC to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bdrpc = "0.1"
+bdrpc = "0.2"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 async-trait = "0.1"
 ```
+
+> **Note:** This guide covers BDRPC v0.2.0 with the new transport management API. For migration from v0.1.0, see the [Migration Guide](migration-guide-v0.2.0.md).
 
 ## Your First BDRPC Application
 
@@ -142,14 +144,15 @@ use bdrpc::serialization::PostcardSerializer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create client endpoint with builder pattern
-    let client = EndpointBuilder::client(PostcardSerializer::default())
+    // Create client endpoint with builder pattern and named transport
+    let mut client = EndpointBuilder::client(PostcardSerializer::default())
+        .with_tcp_caller("server", "127.0.0.1:8080")
         .with_caller("Calculator", 1)
         .build()
         .await?;
     
-    // Connect to server
-    let connection = client.connect("127.0.0.1:8080").await?;
+    // Connect to server using the named transport
+    let connection = client.connect_transport("server").await?;
     println!("Connected to calculator server");
     
     // Create channel and get the generated client stub
@@ -625,6 +628,298 @@ drop(receiver);  // Closes the receiving side
 - **Database Proxy**: Multiplex queries to different databases
 - **Message Broker**: Route messages to different topics
 - **Service Mesh**: Dynamic service discovery and routing
+## Transport Configuration (v0.2.0+)
+
+BDRPC v0.2.0 introduces a powerful transport management system that allows you to configure multiple transports, automatic reconnection, and transport lifecycle management.
+
+### Basic Transport Configuration
+
+#### Server with Multiple Listeners
+
+Create a server that listens on multiple transports:
+
+```rust
+use bdrpc::endpoint::EndpointBuilder;
+use bdrpc::serialization::PostcardSerializer;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create server with multiple TCP listeners
+    let server = EndpointBuilder::server(PostcardSerializer::default())
+        .with_tcp_listener("0.0.0.0:8080")      // Primary listener
+        .with_tcp_listener("0.0.0.0:8081")      // Secondary listener
+        .with_responder("Calculator", 1)
+        .build()
+        .await?;
+    
+    println!("Server listening on ports 8080 and 8081");
+    
+    // Server automatically accepts connections on all listeners
+    // No need to manually call accept() - it's handled internally
+    
+    Ok(())
+}
+```
+
+#### Client with Named Transports
+
+Create a client with named transport connections:
+
+```rust
+use bdrpc::endpoint::EndpointBuilder;
+use bdrpc::serialization::PostcardSerializer;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create client with named transport
+    let mut client = EndpointBuilder::client(PostcardSerializer::default())
+        .with_tcp_caller("primary", "127.0.0.1:8080")
+        .with_caller("Calculator", 1)
+        .build()
+        .await?;
+    
+    // Connect using the named transport
+    let connection = client.connect_transport("primary").await?;
+    println!("Connected via primary transport");
+    
+    // Use the connection
+    let (sender, receiver) = connection
+        .create_channel_pair::<CalculatorProtocol>()
+        .await?;
+    
+    let calc_client = CalculatorClient::new(sender, receiver);
+    let result = calc_client.add(10, 5).await?;
+    
+    Ok(())
+}
+```
+
+### Automatic Reconnection
+
+Configure automatic reconnection with exponential backoff:
+
+```rust
+use bdrpc::endpoint::EndpointBuilder;
+use bdrpc::serialization::PostcardSerializer;
+use bdrpc::reconnection::ExponentialBackoff;
+use std::sync::Arc;
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create reconnection strategy
+    let reconnection = Arc::new(ExponentialBackoff::new(
+        Duration::from_secs(1),    // Initial delay
+        Duration::from_secs(30),   // Max delay
+        2.0,                       // Multiplier
+        Some(10),                  // Max attempts (None = infinite)
+    ));
+    
+    // Create client with automatic reconnection
+    let mut client = EndpointBuilder::client(PostcardSerializer::default())
+        .with_tcp_caller("primary", "127.0.0.1:8080")
+        .with_reconnection_strategy("primary", reconnection)
+        .with_caller("Calculator", 1)
+        .build()
+        .await?;
+    
+    // Connect - will automatically reconnect if connection drops
+    let connection = client.connect_transport("primary").await?;
+    
+    // Connection will automatically reconnect on failure
+    // Your channels will be restored after reconnection
+    
+    Ok(())
+}
+```
+
+### Transport Failover
+
+Configure multiple transports with failover:
+
+```rust
+use bdrpc::endpoint::EndpointBuilder;
+use bdrpc::serialization::PostcardSerializer;
+use bdrpc::reconnection::ExponentialBackoff;
+use std::sync::Arc;
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let reconnection = Arc::new(ExponentialBackoff::new(
+        Duration::from_secs(1),
+        Duration::from_secs(30),
+        2.0,
+        Some(5),
+    ));
+    
+    // Create client with multiple transports
+    let mut client = EndpointBuilder::client(PostcardSerializer::default())
+        .with_tcp_caller("primary", "127.0.0.1:8080")
+        .with_tcp_caller("backup", "127.0.0.1:8081")
+        .with_reconnection_strategy("primary", reconnection.clone())
+        .with_reconnection_strategy("backup", reconnection)
+        .with_caller("Calculator", 1)
+        .build()
+        .await?;
+    
+    // Try primary first
+    let connection = match client.connect_transport("primary").await {
+        Ok(conn) => {
+            println!("Connected to primary");
+            conn
+        }
+        Err(e) => {
+            println!("Primary failed: {}, trying backup", e);
+            client.connect_transport("backup").await?
+        }
+    };
+    
+    Ok(())
+}
+```
+
+### TLS Transport (Optional Feature)
+
+Configure TLS transports for secure communication:
+
+```rust
+#[cfg(feature = "tls")]
+use bdrpc::transport::TlsConfig;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "tls")]
+    {
+        // Server with TLS
+        let tls_config = TlsConfig::new()
+            .with_cert_path("server.crt")
+            .with_key_path("server.key");
+        
+        let server = EndpointBuilder::server(PostcardSerializer::default())
+            .with_tcp_listener("0.0.0.0:8080")       // Plain TCP
+            .with_tls_listener("0.0.0.0:8443", tls_config)  // TLS
+            .with_responder("Calculator", 1)
+            .build()
+            .await?;
+        
+        // Client with TLS
+        let tls_config = TlsConfig::new()
+            .with_ca_path("ca.crt");
+        
+        let mut client = EndpointBuilder::client(PostcardSerializer::default())
+            .with_tls_caller("secure", "127.0.0.1:8443", tls_config)
+            .with_caller("Calculator", 1)
+            .build()
+            .await?;
+        
+        let connection = client.connect_transport("secure").await?;
+    }
+    
+    Ok(())
+}
+```
+
+### Custom Transport Configuration
+
+For advanced use cases, configure transports with custom settings:
+
+```rust
+use bdrpc::endpoint::EndpointBuilder;
+use bdrpc::transport::{TransportConfig, TransportType};
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut metadata = HashMap::new();
+    metadata.insert("region".to_string(), "us-west".to_string());
+    metadata.insert("priority".to_string(), "high".to_string());
+    
+    let transport_config = TransportConfig {
+        transport_type: TransportType::Tcp,
+        address: "127.0.0.1:8080".to_string(),
+        reconnection_strategy: None,
+        enabled: true,
+        metadata,
+    };
+    
+    let mut client = EndpointBuilder::client(PostcardSerializer::default())
+        .with_transport("custom", transport_config)
+        .with_caller("Calculator", 1)
+        .build()
+        .await?;
+    
+    let connection = client.connect_transport("custom").await?;
+    
+    Ok(())
+}
+```
+
+### Dynamic Transport Management
+
+Add, remove, enable, and disable transports at runtime:
+
+```rust
+use bdrpc::transport::{TransportConfig, TransportType};
+
+// Add a new transport dynamically
+let config = TransportConfig {
+    transport_type: TransportType::Tcp,
+    address: "127.0.0.1:9090".to_string(),
+    reconnection_strategy: None,
+    enabled: true,
+    metadata: HashMap::new(),
+};
+
+endpoint.add_caller("new-transport".to_string(), config).await?;
+
+// Connect to the new transport
+let connection = endpoint.connect_transport("new-transport").await?;
+
+// Disable a transport temporarily
+endpoint.disable_transport("new-transport").await?;
+
+// Re-enable it later
+endpoint.enable_transport("new-transport").await?;
+
+// Remove a transport completely
+endpoint.remove_caller("new-transport").await?;
+```
+
+### Migration from v0.1.0
+
+The old connection API is deprecated but still works:
+
+```rust
+// Old API (deprecated in v0.2.0)
+let connection = endpoint.connect("127.0.0.1:8080").await?;
+let listener = endpoint.listen("0.0.0.0:8080").await?;
+
+// New API (recommended)
+let mut endpoint = EndpointBuilder::client(serializer)
+    .with_tcp_caller("main", "127.0.0.1:8080")
+    .build()
+    .await?;
+let connection = endpoint.connect_transport("main").await?;
+
+let server = EndpointBuilder::server(serializer)
+    .with_tcp_listener("0.0.0.0:8080")
+    .build()
+    .await?;
+```
+
+For a complete migration guide, see [Migration Guide v0.2.0](migration-guide-v0.2.0.md).
+
+### Transport Configuration Benefits
+
+1. **Multiple Transports**: Run servers on multiple ports/protocols simultaneously
+2. **Named Connections**: Reference transports by name for clarity
+3. **Automatic Reconnection**: Built-in reconnection with configurable strategies
+4. **Failover Support**: Switch between transports automatically
+5. **Dynamic Management**: Add/remove transports at runtime
+6. **TLS Support**: Secure communication with TLS (optional feature)
+7. **Metadata**: Attach custom metadata to transports for routing/monitoring
+
 - **Multi-tenant Systems**: Isolate traffic per tenant
 
 ```
@@ -725,6 +1020,11 @@ Now that you understand the basics, explore:
   - `chat_server_service.rs`: Multi-client chat server
   - `dynamic_channels_service.rs`: Dynamic channel creation and multiplexing
   - `endpoint_builder.rs`: Builder pattern examples
+  - `multi_transport_server.rs`: Multiple transport listeners (v0.2.0+)
+  - `auto_reconnect_client.rs`: Automatic reconnection (v0.2.0+)
+  - `transport_failover.rs`: Transport failover patterns (v0.2.0+)
+- **[Transport Configuration Guide](transport-configuration.md)**: Complete transport management guide (v0.2.0+)
+- **[Migration Guide v0.2.0](migration-guide-v0.2.0.md)**: Upgrade from v0.1.0 to v0.2.0
 - **[Architecture Guide](architecture-guide.md)**: Deep dive into BDRPC design
 - **[Performance Guide](performance-guide.md)**: Optimization tips
 - **[API Documentation](https://docs.rs/bdrpc)**: Complete API reference
@@ -801,6 +1101,9 @@ You've learned:
 - ✅ How to use dispatchers for request routing
 - ✅ How to create and manage channels dynamically
 - ✅ How to build multiplexing gateways
+- ✅ How to configure multiple transports (v0.2.0+)
+- ✅ How to enable automatic reconnection (v0.2.0+)
+- ✅ How to implement transport failover (v0.2.0+)
 - ✅ Common communication patterns
 - ✅ Error handling strategies
 - ✅ Configuration options
@@ -813,5 +1116,7 @@ You've learned:
 4. **Use generated client stubs** for type-safe RPC calls
 5. **Handle both layers of errors**: channel errors and service errors
 6. **Use dynamic channels** for flexible, on-demand service multiplexing
+7. **Configure transports** with named connections and automatic reconnection (v0.2.0+)
+8. **Enable failover** with multiple transports for high availability (v0.2.0+)
 
 Ready to build production applications with BDRPC!

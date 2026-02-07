@@ -169,6 +169,57 @@ pub enum TransportError {
         #[source]
         source: io::Error,
     },
+
+    /// WebSocket-specific error occurred.
+    ///
+    /// This error occurs during WebSocket operations such as handshake,
+    /// frame processing, or protocol violations.
+    #[cfg(feature = "websocket")]
+    #[error("WebSocket error: {0}")]
+    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
+
+    /// WebSocket handshake failed.
+    ///
+    /// This error occurs when the WebSocket handshake cannot be completed,
+    /// typically due to protocol mismatch or invalid headers.
+    #[cfg(feature = "websocket")]
+    #[error("WebSocket handshake failed: {reason}")]
+    WebSocketHandshakeFailed {
+        /// Description of why the handshake failed
+        reason: String,
+    },
+
+    /// QUIC connection error occurred.
+    ///
+    /// This error occurs during QUIC connection establishment or operation,
+    /// such as connection timeout, protocol violations, or stream errors.
+    #[cfg(feature = "quic")]
+    #[error("QUIC connection error: {0}")]
+    QuicConnection(#[from] quinn::ConnectionError),
+
+    /// QUIC stream error occurred.
+    ///
+    /// This error occurs during QUIC stream operations such as reading,
+    /// writing, or stream state management.
+    #[cfg(feature = "quic")]
+    #[error("QUIC stream write error: {0}")]
+    QuicWriteError(#[from] quinn::WriteError),
+
+    /// QUIC stream read error occurred.
+    #[cfg(feature = "quic")]
+    #[error("QUIC stream read error: {0}")]
+    QuicReadError(#[from] quinn::ReadError),
+
+    /// QUIC endpoint configuration error.
+    ///
+    /// This error occurs when the QUIC endpoint cannot be configured properly,
+    /// typically due to invalid TLS configuration or certificate issues.
+    #[cfg(feature = "quic")]
+    #[error("QUIC endpoint error: {reason}")]
+    QuicEndpointError {
+        /// Description of the endpoint error
+        reason: String,
+    },
 }
 
 impl TransportError {
@@ -221,6 +272,29 @@ impl TransportError {
                 io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
             ),
 
+            // WebSocket errors - some are recoverable
+            #[cfg(feature = "websocket")]
+            TransportError::WebSocket(e) => {
+                use tokio_tungstenite::tungstenite::Error as WsError;
+                matches!(
+                    e,
+                    WsError::Io(_) | WsError::ConnectionClosed | WsError::AlreadyClosed
+                )
+            }
+
+            #[cfg(feature = "websocket")]
+            TransportError::WebSocketHandshakeFailed { .. } => true,
+
+            // QUIC errors - connection errors are recoverable
+            #[cfg(feature = "quic")]
+            TransportError::QuicConnection(_) => true,
+
+            #[cfg(feature = "quic")]
+            TransportError::QuicWriteError(_) | TransportError::QuicReadError(_) => true,
+
+            #[cfg(feature = "quic")]
+            TransportError::QuicEndpointError { .. } => false,
+
             // Non-recoverable errors
             TransportError::InvalidConfiguration { .. }
             | TransportError::Closed
@@ -263,6 +337,17 @@ impl TransportError {
 
             // Timeouts may or may not require closing, but we err on the side of caution
             TransportError::Timeout { .. } => true,
+
+            // WebSocket errors should close the transport
+            #[cfg(feature = "websocket")]
+            TransportError::WebSocket(_) | TransportError::WebSocketHandshakeFailed { .. } => true,
+
+            // QUIC errors should close the transport
+            #[cfg(feature = "quic")]
+            TransportError::QuicConnection(_)
+            | TransportError::QuicWriteError(_)
+            | TransportError::QuicReadError(_)
+            | TransportError::QuicEndpointError { .. } => true,
         }
     }
 

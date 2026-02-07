@@ -169,9 +169,11 @@ impl TransportMetadata {
 ///         &self.metadata
 ///     }
 ///
-///     async fn shutdown(&mut self) -> Result<(), TransportError> {
-///         // Implement graceful shutdown
-///         Ok(())
+///     fn shutdown(&mut self) -> Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>> {
+///         Box::pin(async move {
+///             // Implement graceful shutdown
+///             Ok(())
+///         })
 ///     }
 /// }
 ///
@@ -262,7 +264,13 @@ pub trait Transport: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static {
     /// ```
     fn shutdown(
         &mut self,
-    ) -> impl std::future::Future<Output = Result<(), crate::transport::TransportError>> + Send;
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), crate::transport::TransportError>>
+                + Send
+                + '_,
+        >,
+    >;
 
     /// Splits the transport into separate read and write halves.
     ///

@@ -66,7 +66,7 @@
 //! ```
 
 use bdrpc::channel::Protocol;
-use bdrpc::endpoint::{Endpoint, EndpointConfig};
+use bdrpc::endpoint::EndpointBuilder;
 use bdrpc::serialization::JsonSerializer;
 use std::collections::HashMap;
 use std::error::Error;
@@ -130,30 +130,30 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
     println!("🖥️  Starting Network Chat Server");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    // Step 1: Create server endpoint
-    println!("🔧 Step 1: Creating server endpoint");
-    let config = EndpointConfig::default().with_endpoint_id("chat-server".to_string());
-    let mut endpoint = Endpoint::new(JsonSerializer::default(), config);
-    println!("   ✅ Server endpoint created (ID: {})", endpoint.id());
-    println!("   Serializer: {}\n", endpoint.serializer_name());
-
-    // Step 2: Register chat protocol as bidirectional
-    println!("📋 Step 2: Registering ChatProtocol");
-    endpoint.register_bidirectional("ChatProtocol", 1).await?;
-    println!("   ✅ ChatProtocol registered as bidirectional\n");
-
-    // Step 3: Bind to TCP address
-    println!("🌐 Step 3: Binding to TCP address");
+    // Step 1: Create server endpoint using EndpointBuilder
+    println!("🔧 Step 1: Creating server endpoint with EndpointBuilder");
     let addr = "127.0.0.1:9091";
+    let endpoint = EndpointBuilder::server(JsonSerializer::default())
+        .configure(|config| config.with_endpoint_id("chat-server".to_string()))
+        .with_tcp_listener(addr)
+        .with_bidirectional("ChatProtocol", 1)
+        .build()
+        .await?;
+    println!("   ✅ Server endpoint created (ID: {})", endpoint.id());
+    println!("   Serializer: {}", endpoint.serializer_name());
+    println!("   ✅ ChatProtocol registered as bidirectional");
+    println!("   ✅ TCP listener configured on {}\n", addr);
+
+    // Step 2: Server is now listening
+    println!("🌐 Step 2: Server ready");
     println!("   Listening on {}", addr);
     println!("   ⏳ Waiting for clients to connect...\n");
 
     // Create shared state for tracking clients
     let _clients: ServerState = Arc::new(RwLock::new(HashMap::new()));
 
-    // Step 4: Start listening for connections
-    println!("📡 Step 4: Accepting connections");
-    endpoint.listen(addr).await?;
+    // Step 3: Server automatically accepts connections
+    println!("📡 Step 3: Server accepting connections");
     println!("   ✅ Server listening on {}\n", addr);
 
     // In a real implementation, we would:
@@ -195,30 +195,31 @@ async fn run_client(username: &str) -> Result<(), Box<dyn Error>> {
     // Give server time to start
     sleep(Duration::from_millis(500)).await;
 
-    // Step 1: Create client endpoint
-    println!("🔧 Step 1: Creating client endpoint");
-    let config = EndpointConfig::default().with_endpoint_id(format!("chat-client-{}", username));
-    let mut endpoint = Endpoint::new(JsonSerializer::default(), config);
-    println!("   ✅ Client endpoint created (ID: {})", endpoint.id());
-    println!("   Serializer: {}\n", endpoint.serializer_name());
-
-    // Step 2: Register chat protocol as bidirectional
-    println!("📋 Step 2: Registering ChatProtocol");
-    endpoint.register_bidirectional("ChatProtocol", 1).await?;
-    println!("   ✅ ChatProtocol registered as bidirectional\n");
-
-    // Step 3: Connect to server
-    println!("🌐 Step 3: Connecting to server");
+    // Step 1: Create client endpoint using EndpointBuilder
+    println!("🔧 Step 1: Creating client endpoint with EndpointBuilder");
     let addr = "127.0.0.1:9091";
-    println!("   Connecting to {}", addr);
+    let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
+        .configure(|config| config.with_endpoint_id(format!("chat-client-{}", username)))
+        .with_tcp_caller("server", addr)
+        .with_bidirectional("ChatProtocol", 1)
+        .build()
+        .await?;
+    println!("   ✅ Client endpoint created (ID: {})", endpoint.id());
+    println!("   Serializer: {}", endpoint.serializer_name());
+    println!("   ✅ ChatProtocol registered as bidirectional");
+    println!("   ✅ TCP caller configured for {}\n", addr);
 
-    let connection = endpoint.connect(addr).await?;
+    // Step 2: Connect to server using named transport
+    println!("🌐 Step 2: Connecting to server");
+    println!("   Connecting to {} via 'server' transport", addr);
+
+    let connection = endpoint.connect_transport("server").await?;
     println!(
         "   ✅ Connected to server (connection: {})\n",
         connection.id()
     );
 
-    // Step 4: Create typed channels using the new convenience method
+    // Step 4: Create typed channels using the convenience method
     println!("📺 Step 4: Creating typed channels");
     println!("   Using get_channels() convenience method...");
 

@@ -208,6 +208,8 @@
 //! - QUIC transport for improved performance over unreliable networks
 //! - Unix domain sockets for local IPC
 
+mod config;
+mod enhanced;
 mod error;
 mod manager;
 mod memory;
@@ -220,6 +222,16 @@ mod tls;
 #[cfg(feature = "compression")]
 mod compression;
 
+#[cfg(feature = "websocket")]
+mod websocket;
+
+#[cfg(feature = "quic")]
+mod quic;
+
+pub use config::{TransportConfig, TransportType};
+pub use enhanced::{
+    CallerState, CallerTransport, TransportConnection, TransportEventHandler, TransportListener,
+};
 pub use error::TransportError;
 pub use manager::TransportManager;
 pub use memory::MemoryTransport;
@@ -231,3 +243,9 @@ pub use tls::{TlsConfig, TlsTransport};
 
 #[cfg(feature = "compression")]
 pub use compression::{CompressedTransport, CompressionAlgorithm, CompressionConfig};
+
+#[cfg(feature = "websocket")]
+pub use websocket::{WebSocketConfig, WebSocketListener, WebSocketTransport};
+
+#[cfg(feature = "quic")]
+pub use quic::{QuicConfig, QuicListener, QuicTransport};

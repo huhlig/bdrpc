@@ -389,13 +389,18 @@ where
         &self.metadata
     }
 
-    async fn shutdown(&mut self) -> Result<(), TransportError> {
-        use tokio::io::AsyncWriteExt;
-        match &mut self.writer {
-            WriteStream::GzipEncoder(w) => w.shutdown().await.map_err(TransportError::from),
-            WriteStream::ZstdEncoder(w) => w.shutdown().await.map_err(TransportError::from),
-            WriteStream::Lz4Encoder(w) => w.shutdown().await.map_err(TransportError::from),
-        }
+    fn shutdown(
+        &mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send + '_>>
+    {
+        Box::pin(async move {
+            use tokio::io::AsyncWriteExt;
+            match &mut self.writer {
+                WriteStream::GzipEncoder(w) => w.shutdown().await.map_err(TransportError::from),
+                WriteStream::ZstdEncoder(w) => w.shutdown().await.map_err(TransportError::from),
+                WriteStream::Lz4Encoder(w) => w.shutdown().await.map_err(TransportError::from),
+            }
+        })
     }
 }
 

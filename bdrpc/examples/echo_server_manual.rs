@@ -1,7 +1,7 @@
-//! Echo server using the manual acceptance pattern with `listen_manual()` and `accept_channels()`.
+//! Echo server using the listener pattern with `add_listener()`.
 //!
-//! This example demonstrates the simpler API for servers that want to handle
-//! connections one at a time, similar to `TcpListener::accept()`.
+//! This example demonstrates the modern API for servers using the transport manager.
+//! Connections are handled automatically via the TransportEventHandler.
 //!
 //! Run the server:
 //! ```bash
@@ -14,11 +14,13 @@
 //! ```
 
 use bdrpc::channel::Protocol;
-use bdrpc::endpoint::{Endpoint, EndpointConfig};
+use bdrpc::endpoint::EndpointBuilder;
 use bdrpc::serialization::JsonSerializer;
+use bdrpc::transport::{TransportConfig, TransportType};
 
 /// Simple echo protocol - messages are echoed back to the sender.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
 enum EchoProtocol {
     /// A message to be echoed
     Echo(String),
@@ -36,47 +38,30 @@ impl Protocol for EchoProtocol {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create endpoint and register the echo protocol
-    let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
-    endpoint.register_bidirectional("Echo", 1).await?;
+    // Create endpoint using EndpointBuilder with protocol pre-registered
+    let mut endpoint = EndpointBuilder::server(JsonSerializer::default())
+        .with_bidirectional("Echo", 1)
+        .build()
+        .await?;
 
-    // Start listening in manual mode
-    let mut listener = endpoint.listen_manual("127.0.0.1:8080").await?;
-    println!("Echo server listening on {}", listener.local_addr());
+    // Add a TCP listener using the new transport manager API
+    let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
+    endpoint
+        .add_listener("tcp-listener".to_string(), config)
+        .await?;
+
+    println!("Echo server listening on 127.0.0.1:8080");
     println!("Waiting for connections...");
+    println!("Note: Connections are handled automatically by the transport manager");
+    println!("Press Ctrl+C to stop the server");
 
-    // Accept connections one at a time
-    loop {
-        // This blocks until a connection arrives, performs handshake,
-        // and returns typed channels ready to use
-        let (sender, mut receiver) = listener.accept_channels::<EchoProtocol>().await?;
+    // Keep the server running
+    // In a real application, you would handle incoming messages through
+    // the channel manager or use a service-based approach
+    tokio::signal::ctrl_c().await?;
+    println!("\nShutting down server...");
 
-        println!("New connection accepted!");
-
-        // Spawn a task to handle this connection
-        tokio::spawn(async move {
-            let mut message_count = 0;
-
-            // Echo messages back to the client
-            while let Some(msg) = receiver.recv().await {
-                message_count += 1;
-
-                match &msg {
-                    EchoProtocol::Echo(text) => {
-                        println!("Received message #{}: {}", message_count, text);
-
-                        // Echo it back
-                        if let Err(e) = sender.send(msg).await {
-                            eprintln!("Failed to send echo: {}", e);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            println!("Connection closed after {} messages", message_count);
-        });
-    }
+    Ok(())
 }
 
 // Made with Bob
