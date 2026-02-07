@@ -328,13 +328,13 @@ impl CallerTransport {
             Some(s) => Arc::clone(s),
             None => {
                 #[cfg(feature = "observability")]
-                warn!("Caller '{}' has no reconnection strategy configured", name);
+                tracing::warn!("Caller '{}' has no reconnection strategy configured", name);
                 return;
             }
         };
 
         #[cfg(feature = "observability")]
-        info!("Starting reconnection loop for caller '{}'", name);
+        tracing::info!("Starting reconnection loop for caller '{}'", name);
 
         let task = tokio::spawn(async move {
             let mut attempt = 0u32;
@@ -346,12 +346,12 @@ impl CallerTransport {
                 match current_state {
                     CallerState::Disabled => {
                         #[cfg(feature = "observability")]
-                        info!("Caller '{}' is disabled, stopping reconnection loop", name);
+                        tracing::info!("Caller '{}' is disabled, stopping reconnection loop", name);
                         break;
                     }
                     CallerState::Connected(_) => {
                         #[cfg(feature = "observability")]
-                        debug!("Caller '{}' is already connected, waiting for disconnection", name);
+                        tracing::debug!("Caller '{}' is already connected, waiting for disconnection", name);
                         // Wait a bit before checking again
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         continue;
@@ -363,7 +363,7 @@ impl CallerTransport {
                 *state.write().await = CallerState::Connecting;
 
                 #[cfg(feature = "observability")]
-                info!("Caller '{}' attempting connection (attempt {})", name, attempt + 1);
+                tracing::info!("Caller '{}' attempting connection (attempt {})", name, attempt + 1);
 
                 // Attempt to connect
                 let connect_result = connect_fn(config.address().to_string()).await;
@@ -371,7 +371,7 @@ impl CallerTransport {
                 match connect_result {
                     Ok(transport_id) => {
                         #[cfg(feature = "observability")]
-                        info!("Caller '{}' connected successfully with transport ID {}", name, transport_id);
+                        tracing::info!("Caller '{}' connected successfully with transport ID {}", name, transport_id);
 
                         // Update state
                         *state.write().await = CallerState::Connected(transport_id);
@@ -394,7 +394,7 @@ impl CallerTransport {
                     }
                     Err(error) => {
                         #[cfg(feature = "observability")]
-                        warn!("Caller '{}' connection failed (attempt {}): {}", name, attempt + 1, error);
+                        tracing::warn!("Caller '{}' connection failed (attempt {}): {}", name, attempt + 1, error);
 
                         // Notify strategy
                         strategy.on_disconnected(&error);
@@ -402,7 +402,7 @@ impl CallerTransport {
                         // Check if we should retry
                         if !strategy.should_reconnect(attempt, &error).await {
                             #[cfg(feature = "observability")]
-                            error!("Caller '{}' giving up after {} attempts", name, attempt + 1);
+                            tracing::error!("Caller '{}' giving up after {} attempts", name, attempt + 1);
 
                             *state.write().await = CallerState::Disconnected;
                             break;
@@ -418,7 +418,7 @@ impl CallerTransport {
                         let delay = strategy.next_delay(attempt).await;
 
                         #[cfg(feature = "observability")]
-                        debug!("Caller '{}' will retry in {:?}", name, delay);
+                        tracing::debug!("Caller '{}' will retry in {:?}", name, delay);
 
                         // Wait before retrying
                         tokio::time::sleep(delay).await;
@@ -429,7 +429,7 @@ impl CallerTransport {
             }
 
             #[cfg(feature = "observability")]
-            info!("Reconnection loop stopped for caller '{}'", name);
+            tracing::info!("Reconnection loop stopped for caller '{}'", name);
         });
 
         *reconnection_task.write().await = Some(task);
@@ -457,7 +457,7 @@ impl CallerTransport {
         let mut task_guard = self.reconnection_task.write().await;
         if let Some(task) = task_guard.take() {
             #[cfg(feature = "observability")]
-            info!("Stopping reconnection loop for caller '{}'", self.name);
+            tracing::info!("Stopping reconnection loop for caller '{}'", self.name);
 
             task.abort();
         }
