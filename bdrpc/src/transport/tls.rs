@@ -118,12 +118,15 @@ impl TlsConfig {
         let mut root_store = rustls::RootCertStore::empty();
 
         // Add system root certificates
-        for cert in rustls_native_certs::load_native_certs().map_err(|e| TransportError::Io {
-            source: io::Error::other(e),
-        })? {
+        let native_certs = rustls_native_certs::load_native_certs();
+        for cert in native_certs.certs {
             root_store.add(cert).map_err(|e| TransportError::Io {
                 source: io::Error::other(e),
             })?;
+        }
+        // Log any errors but don't fail
+        if let Some(err) = native_certs.errors.first() {
+            tracing::warn!("Failed to load some native certificates: {}", err);
         }
 
         let config = rustls::ClientConfig::builder()
@@ -510,6 +513,12 @@ mod tests {
     use super::*;
     #[allow(unused_imports)] // May be used in future TLS tests
     use crate::transport::MemoryTransport;
+
+    // Install default crypto provider for tests
+    #[ctor::ctor]
+    fn init() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
 
     #[test]
     fn test_tls_config_debug() {

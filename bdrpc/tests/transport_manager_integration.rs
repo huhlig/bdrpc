@@ -23,6 +23,12 @@
 //! - Transport enable/disable functionality
 //! - Multiple simultaneous transports
 
+// Install default crypto provider for tests
+#[ctor::ctor]
+fn init() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 use bdrpc::channel::Protocol;
 use bdrpc::endpoint::EndpointBuilder;
 use bdrpc::reconnection::{CircuitBreaker, ExponentialBackoff, FixedDelay};

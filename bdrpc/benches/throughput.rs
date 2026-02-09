@@ -7,9 +7,10 @@
 //! - Batch processing
 
 use bdrpc::channel::{Channel, ChannelId, Protocol};
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::hint::black_box;
 use std::time::Duration;
 
 /// Small message payload (100 bytes)

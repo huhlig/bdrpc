@@ -74,7 +74,7 @@
 
 use crate::transport::{Transport, TransportError, TransportId, TransportMetadata};
 use quinn::{Connection, Endpoint, RecvStream, SendStream, ServerConfig};
-use rustls_021 as rustls;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -231,16 +231,22 @@ impl QuicTransport {
             }
         })?;
 
-        // Configure client with rustls 0.21
+        // Configure client with rustls 0.23
         let mut crypto = rustls::ClientConfig::builder()
-            .with_safe_defaults()
+            .dangerous()
             .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
             .with_no_client_auth();
 
-        // Disable session resumption for simplicity (can be enabled for 0-RTT)
+        // Enable early data for 0-RTT if configured
         crypto.enable_early_data = config.enable_0rtt;
 
-        let mut client_config = quinn::ClientConfig::new(Arc::new(crypto));
+        let mut client_config = quinn::ClientConfig::new(Arc::new(
+            quinn::crypto::rustls::QuicClientConfig::try_from(crypto).map_err(|e| {
+                TransportError::QuicEndpointError {
+                    reason: format!("Failed to create QUIC client config: {}", e),
+                }
+            })?,
+        ));
 
         // Apply configuration
         let mut transport_config = quinn::TransportConfig::default();
@@ -338,7 +344,6 @@ impl Transport for QuicTransport {
             // Finish the send stream
             let mut send = self.send_stream.lock().await;
             send.finish()
-                .await
                 .map_err(|e| TransportError::QuicEndpointError {
                     reason: format!("Failed to finish stream: {}", e),
                 })?;
@@ -388,7 +393,9 @@ impl AsyncWrite for QuicTransport {
         };
 
         // Poll the send stream
-        Pin::new(&mut *send).poll_write(cx, buf)
+        Pin::new(&mut *send)
+            .poll_write(cx, buf)
+            .map_err(io::Error::other)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -466,26 +473,30 @@ impl QuicListener {
                 }
             })?;
 
-        let cert_der = cert
-            .serialize_der()
-            .map_err(|e| TransportError::QuicEndpointError {
-                reason: format!("Failed to serialize certificate: {}", e),
-            })?;
-        let priv_key = cert.serialize_private_key_der();
+        let cert_der = cert.cert.der().to_vec();
+        let priv_key = cert.signing_key.serialize_der();
 
-        // Create rustls server config (0.21 API)
-        let cert_chain = vec![rustls::Certificate(cert_der)];
-        let private_key = rustls::PrivateKey(priv_key);
+        // Create rustls server config (0.23 API)
+        let cert_chain = vec![CertificateDer::from(cert_der)];
+        let private_key =
+            PrivateKeyDer::try_from(priv_key).map_err(|_| TransportError::QuicEndpointError {
+                reason: "Failed to parse private key".to_string(),
+            })?;
 
         let crypto = rustls::ServerConfig::builder()
-            .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(cert_chain, private_key)
             .map_err(|e| TransportError::QuicEndpointError {
                 reason: format!("Failed to create rustls server config: {}", e),
             })?;
 
-        let mut server_config = ServerConfig::with_crypto(Arc::new(crypto));
+        let mut server_config = ServerConfig::with_crypto(Arc::new(
+            quinn::crypto::rustls::QuicServerConfig::try_from(crypto).map_err(|e| {
+                TransportError::QuicEndpointError {
+                    reason: format!("Failed to create QUIC server config: {}", e),
+                }
+            })?,
+        ));
 
         // Apply transport configuration
         let mut transport_config = quinn::TransportConfig::default();
@@ -564,17 +575,42 @@ impl QuicListener {
 #[derive(Debug)]
 struct SkipServerVerification;
 
-impl rustls::client::ServerCertVerifier for SkipServerVerification {
+impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
     fn verify_server_cert(
         &self,
-        _end_entity: &rustls::Certificate,
-        _intermediates: &[rustls::Certificate],
-        _server_name: &rustls::ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
         _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::ServerCertVerified::assertion())
+        _now: UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        vec![
+            rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            rustls::SignatureScheme::ED25519,
+        ]
     }
 }
 

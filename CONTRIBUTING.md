@@ -457,7 +457,7 @@ proptest! {
 Use `criterion` for benchmarks:
 
 ```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 fn benchmark_serialization(c: &mut Criterion) {
     let serializer = PostcardSerializer::new();
@@ -465,7 +465,7 @@ fn benchmark_serialization(c: &mut Criterion) {
     
     c.bench_function("serialize 1KB", |b| {
         b.iter(|| {
-            serializer.serialize(black_box(&data)).unwrap();
+            serializer.serialize(std::hint::black_box(&data)).unwrap();
         });
     });
 }

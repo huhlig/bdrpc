@@ -190,10 +190,15 @@ impl MtlsConfigBuilder {
             }
         } else {
             // Fall back to system certificates
-            for cert in rustls_native_certs::load_native_certs().map_err(io::Error::other)? {
+            let native_certs = rustls_native_certs::load_native_certs();
+            for cert in native_certs.certs {
                 root_store
                     .add(cert)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            }
+            // Log any errors but don't fail
+            if let Some(err) = native_certs.errors.first() {
+                eprintln!("Warning: Failed to load some native certificates: {}", err);
             }
         }
 

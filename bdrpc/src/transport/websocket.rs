@@ -277,7 +277,7 @@ impl WebSocketTransport {
         loop {
             match stream.next().await {
                 Some(Ok(Message::Binary(data))) => {
-                    return Ok(data);
+                    return Ok(data.to_vec());
                 }
                 Some(Ok(Message::Ping(data))) => {
                     // Respond to ping with pong
@@ -411,7 +411,7 @@ impl AsyncWrite for WebSocketTransport {
             tokio::runtime::Handle::current().block_on(async {
                 let mut stream = this.stream.lock().await;
                 stream
-                    .send(Message::Binary(buf.to_vec()))
+                    .send(Message::Binary(buf.to_vec().into()))
                     .await
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 Ok(len)

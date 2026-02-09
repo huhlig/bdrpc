@@ -19,6 +19,12 @@
 //! These tests verify that different transport types all work correctly
 //! with the BDRPC protocol, ensuring consistent behavior across transports.
 
+// Install default crypto provider for tests
+#[ctor::ctor]
+fn init() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
