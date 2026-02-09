@@ -107,7 +107,7 @@
 //! ### Network Communication with Endpoint API
 //!
 //! ```rust,no_run
-//! use bdrpc::endpoint::{Endpoint, EndpointConfig, ProtocolDirection};
+//! use bdrpc::endpoint::EndpointBuilder;
 //! use bdrpc::serialization::JsonSerializer;
 //! use bdrpc::channel::Protocol;
 //!
@@ -131,39 +131,53 @@
 //! }
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create endpoint with JSON serialization
-//! let config = EndpointConfig::default()
-//!     .with_endpoint_id("my-service".to_string());
-//! let mut endpoint = Endpoint::new(JsonSerializer::default(), config);
+//! // Create server endpoint with TCP listener using EndpointBuilder
+//! let server = EndpointBuilder::server(JsonSerializer::default())
+//!     .with_tcp_listener("127.0.0.1:8080")
+//!     .with_bidirectional("ChatProtocol", 1)
+//!     .build()
+//!     .await?;
 //!
-//! // Register protocol as bidirectional (can both call and respond)
-//! endpoint.register_bidirectional("ChatProtocol", 1).await?;
+//! // Create client endpoint with TCP caller
+//! let mut client = EndpointBuilder::client(JsonSerializer::default())
+//!     .with_tcp_caller("server", "127.0.0.1:8080")
+//!     .with_bidirectional("ChatProtocol", 1)
+//!     .build()
+//!     .await?;
 //!
-//! // Connect to a remote endpoint (would fail in doctest, so commented out)
-//! // let connection = endpoint.connect("127.0.0.1:8080").await?;
-//! // println!("Connected: {}", connection.id());
+//! // Connect to server via named transport
+//! let connection = client.connect_transport("server").await?;
+//!
+//! // Get typed channels for communication
+//! let (sender, receiver) = client
+//!     .get_channels::<ChatProtocol>(connection.id(), "ChatProtocol")
+//!     .await?;
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! ### Using the Builder Pattern (Recommended)
 //!
-//! The [`EndpointBuilder`] provides a more ergonomic way to create endpoints:
+//! The [`EndpointBuilder`] provides a more ergonomic way to create endpoints with
+//! protocols and transports pre-configured:
 //!
 //! ```rust,no_run
 //! use bdrpc::endpoint::EndpointBuilder;
 //! use bdrpc::serialization::PostcardSerializer;
+//! use bdrpc::channel::SystemProtocol;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a client endpoint with protocols pre-registered
-//! let client = EndpointBuilder::client(PostcardSerializer::default())
+//! // Create a client endpoint with TCP transport and protocols
+//! let mut client = EndpointBuilder::client(PostcardSerializer::default())
+//!     .with_tcp_caller("backend", "127.0.0.1:8080")
 //!     .with_caller("UserService", 1)
 //!     .with_caller("OrderService", 1)
 //!     .build()
 //!     .await?;
 //!
-//! // Create a server endpoint
+//! // Create a server endpoint with TCP listener
 //! let server = EndpointBuilder::server(PostcardSerializer::default())
+//!     .with_tcp_listener("127.0.0.1:8080")
 //!     .with_responder("UserService", 1)
 //!     .with_responder("OrderService", 1)
 //!     .build()
@@ -171,8 +185,15 @@
 //!
 //! // Create a peer endpoint for bidirectional communication
 //! let peer = EndpointBuilder::peer(PostcardSerializer::default())
+//!     .with_tcp_listener("127.0.0.1:9090")
 //!     .with_bidirectional("ChatProtocol", 1)
 //!     .build()
+//!     .await?;
+//!
+//! // Connect and get typed channels
+//! let connection = client.connect_transport("backend").await?;
+//! let (sender, receiver) = client
+//!     .get_channels::<SystemProtocol>(connection.id(), "UserService")
 //!     .await?;
 //! # Ok(())
 //! # }
@@ -182,17 +203,28 @@
 //!
 //! The `examples/` directory contains several complete examples:
 //!
+//! ### Modern API Examples (Recommended)
+//! - **`endpoint_builder`**: Demonstrates the EndpointBuilder pattern
+//! - **`network_chat`**: Full network application with Endpoint API
+//! - **`echo_server_manual`**: Server using `add_listener()` pattern
+//! - **`multi_transport_server`**: Multiple transport types (TCP, WebSocket, QUIC)
+//! - **`transport_failover`**: Automatic failover between transports
+//!
+//! ### Protocol Examples
 //! - **`hello_world`**: Basic usage with all layers
-//! - **`channel_basics`**: Channel-only communication patterns
-//! - **`advanced_channels`**: Channel management and lifecycle
 //! - **`calculator`**: Bi-directional RPC over TCP
 //! - **`chat_server`**: Multiple concurrent clients
 //! - **`file_transfer`**: Streaming large files with progress tracking
-//! - **`network_chat`**: Full network application with Endpoint API
+//!
+//! ### Channel Examples
+//! - **`channel_basics`**: Channel-only communication patterns
+//! - **`advanced_channels`**: Channel management and lifecycle
+//! - **`dynamic_channels`**: Dynamic channel creation and negotiation
 //!
 //! Run an example with:
 //! ```bash
-//! cargo run --example hello_world
+//! cargo run --example endpoint_builder
+//! cargo run --example network_chat
 //! ```
 //!
 //! ## Features
@@ -245,7 +277,7 @@ pub use bdrpc_macros::service;
 
 pub use backpressure::{BackpressureMetrics, BackpressureStrategy, BoundedQueue, Unlimited};
 pub use channel::{Channel, ChannelError, ChannelId, ChannelManager, Protocol};
-pub use endpoint::{Endpoint, EndpointConfig, EndpointError, ProtocolDirection};
+pub use endpoint::{Endpoint, EndpointBuilder, EndpointConfig, EndpointError, ProtocolDirection};
 pub use error::BdrpcError;
 pub use observability::{ChannelMetrics, ErrorMetrics, ErrorObserver, TransportMetrics, log_error};
 pub use reconnection::{

@@ -34,8 +34,10 @@ use std::sync::Arc;
 /// use bdrpc::transport::TransportType;
 ///
 /// let tcp = TransportType::Tcp;
-/// let tls = TransportType::Tls;
-/// assert_ne!(tcp, tls);
+/// assert_eq!(tcp.as_str(), "tcp");
+///
+/// #[cfg(feature = "websocket")]
+/// let ws = TransportType::WebSocket;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TransportType {
