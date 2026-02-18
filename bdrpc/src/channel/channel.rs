@@ -1036,15 +1036,21 @@ impl<P: Protocol> ChannelReceiver<P> {
             debug!("Received envelope on channel");
         }
 
-        // Verify sequence number in debug builds
+        // Verify sequence number in debug builds, but skip validation for correlated messages
+        // as they are explicitly designed to arrive out-of-order in concurrent RPC scenarios
         #[cfg(debug_assertions)]
         {
-            let expected = self.state.recv_sequence.fetch_add(1, Ordering::SeqCst);
-            if envelope.sequence != expected {
-                panic!(
-                    "Message reordering detected on channel {}! Expected sequence {}, got {}",
-                    self.id, expected, envelope.sequence
-                );
+            if envelope.correlation_id.is_none() {
+                let expected = self.state.recv_sequence.fetch_add(1, Ordering::SeqCst);
+                if envelope.sequence != expected {
+                    panic!(
+                        "Message reordering detected on channel {}! Expected sequence {}, got {}",
+                        self.id, expected, envelope.sequence
+                    );
+                }
+            } else {
+                // For correlated messages, just update the counter without validation
+                self.state.recv_sequence.fetch_add(1, Ordering::SeqCst);
             }
         }
 

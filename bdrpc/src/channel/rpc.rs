@@ -268,6 +268,7 @@ mod tests {
     use crate::channel::{Channel, ChannelId};
 
     #[derive(Debug, Clone, PartialEq)]
+    #[allow(dead_code)]
     enum TestProtocol {
         AddRequest { a: i32, b: i32 },
         AddResponse { result: i32 },
@@ -290,7 +291,7 @@ mod tests {
 
         // Spawn server task
         tokio::spawn(async move {
-            let mut rx = sender;
+            let _rx = sender;
             // Simulate receiving on server side - we need another receiver
             // This test is simplified - in real usage, server would have its own receiver
         });

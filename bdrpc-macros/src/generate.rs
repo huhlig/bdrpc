@@ -389,6 +389,7 @@ pub fn generate_client_stub(service: &ServiceDef) -> TokenStream {
         #[doc = ""]
         #[doc = "This client supports concurrent RPC calls using request-response correlation."]
         #[doc = "Multiple requests can be in-flight simultaneously without blocking each other."]
+        #[derive(Clone)]
         pub struct #client_name {
             /// Channel sender for sending requests to the remote service.
             sender: ::bdrpc::channel::ChannelSender<#protocol_name>,
