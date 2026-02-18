@@ -265,7 +265,7 @@ mod tests {
         // Get and drop a buffer
         {
             let mut buffer = BufferPool::get(1024);
-            buffer.extend_from_slice(b"test data");
+            buffer.extend_from_slice(b"test types");
         }
 
         // Get another buffer - should be reused

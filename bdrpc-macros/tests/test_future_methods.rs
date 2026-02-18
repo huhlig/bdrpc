@@ -76,7 +76,6 @@ fn test_complex_return_service_compiles() {
 // Implementation test for mixed service
 struct TestMixedService;
 
-#[async_trait::async_trait]
 impl MixedServiceServer for TestMixedService {
     async fn async_method(&self, value: i32) -> Result<i32, String> {
         Ok(value * 2)
@@ -142,7 +141,6 @@ async fn test_mixed_service_implementation() {
 // Test that impl Future methods work in server trait
 struct TestAllFutureService;
 
-#[async_trait::async_trait]
 #[allow(clippy::manual_async_fn)]
 impl AllFutureServiceServer for TestAllFutureService {
     fn method1(&self, a: i32) -> impl Future<Output = Result<i32, String>> + Send {

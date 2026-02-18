@@ -24,7 +24,7 @@ use std::fmt;
 ///
 /// This error indicates that a value could not be serialized to bytes.
 /// Common causes include:
-/// - Invalid data structure
+/// - Invalid types structure
 /// - Unsupported types
 /// - Buffer allocation failures
 ///
@@ -36,12 +36,12 @@ use std::fmt;
 ///
 /// #[derive(Serialize)]
 /// struct Message {
-///     data: String,
+///     types: String,
 /// }
 ///
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let serializer = PostcardSerializer::default();
-/// let message = Message { data: "test".to_string() };
+/// let message = Message { types: "test".to_string() };
 /// let bytes = serializer.serialize(&message)?;
 /// # Ok(())
 /// # }
@@ -115,10 +115,10 @@ impl std::error::Error for SerializationError {
 ///
 /// This error indicates that bytes could not be deserialized into a value.
 /// Common causes include:
-/// - Corrupted data
+/// - Corrupted types
 /// - Version mismatch
 /// - Invalid format
-/// - Incomplete data
+/// - Incomplete types
 ///
 /// # Examples
 ///
@@ -128,7 +128,7 @@ impl std::error::Error for SerializationError {
 ///
 /// #[derive(Deserialize)]
 /// struct Message {
-///     data: String,
+///     types: String,
 /// }
 ///
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -155,7 +155,7 @@ impl DeserializationError {
     /// ```rust
     /// use bdrpc::serialization::DeserializationError;
     ///
-    /// let error = DeserializationError::new("Invalid data format");
+    /// let error = DeserializationError::new("Invalid types format");
     /// ```
     pub fn new(message: impl Into<String>) -> Self {
         Self {

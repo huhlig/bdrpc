@@ -44,7 +44,7 @@ trait FileTransfer {
         total_size: Option<u64>, // None for unknown size
     ) -> Result<String, String>; // Returns transfer_id
     
-    /// Send a chunk of data
+    /// Send a chunk of types
     async fn send_chunk(
         &self,
         transfer_id: String,
@@ -190,7 +190,7 @@ client.upload_from_reader(
 ```rust
 use tokio_util::io::StreamReader;
 
-let response = reqwest::get("https://example.com/data").await?;
+let response = reqwest::get("https://example.com/types").await?;
 let stream = response.bytes_stream();
 let reader = StreamReader::new(stream);
 
@@ -207,12 +207,12 @@ client.upload_from_reader(
 use async_compression::tokio::bufread::GzipEncoder;
 use tokio::io::BufReader;
 
-let file = File::open("data.txt").await?;
+let file = File::open("types.txt").await?;
 let buffered = BufReader::new(file);
 let compressed = GzipEncoder::new(buffered);
 
 client.upload_from_reader(
-    "data.txt.gz".to_string(),
+    "types.txt.gz".to_string(),
     compressed,
     None, // Size unknown after compression
 ).await?;

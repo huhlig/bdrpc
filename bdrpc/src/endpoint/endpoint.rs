@@ -671,7 +671,7 @@ impl<S: Serializer> Endpoint<S> {
     ///
     /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     /// enum MyProtocol {
-    ///     Request { data: String },
+    ///     Request { types: String },
     ///     Response { result: String },
     /// }
     ///
@@ -700,7 +700,7 @@ impl<S: Serializer> Endpoint<S> {
     /// ).await?;
     ///
     /// // Now you can send and receive messages
-    /// sender.send(MyProtocol::Request { data: "Hello".to_string() }).await?;
+    /// sender.send(MyProtocol::Request { types: "Hello".to_string() }).await?;
     /// # Ok(())
     /// # }
     /// ```

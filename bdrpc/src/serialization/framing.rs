@@ -29,7 +29,7 @@
 //! ```
 //!
 //! - **Length**: u32 in big-endian format, indicates payload size in bytes
-//! - **Payload**: The serialized message data
+//! - **Payload**: The serialized message types
 //!
 //! # Examples
 //!
@@ -54,13 +54,13 @@
 //! use bdrpc::serialization::framing::read_frame;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! # let data = {
+//! # let types = {
 //! #     let mut buf = Vec::new();
 //! #     buf.extend_from_slice(&5u32.to_be_bytes());
 //! #     buf.extend_from_slice(b"Hello");
 //! #     buf
 //! # };
-//! let mut reader = &data[..];
+//! let mut reader = &types[..];
 //! let message = read_frame(&mut reader).await?;
 //! assert_eq!(message, b"Hello");
 //! # Ok(())
@@ -131,7 +131,7 @@ where
         .await
         .map_err(|e| SerializationError::with_source("Failed to write frame payload", e))?;
 
-    // Flush to ensure data is sent
+    // Flush to ensure types is sent
     writer
         .flush()
         .await
@@ -159,11 +159,11 @@ where
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a framed message
-/// let mut data = Vec::new();
-/// data.extend_from_slice(&5u32.to_be_bytes()); // Length: 5
-/// data.extend_from_slice(b"Hello"); // Payload
+/// let mut types = Vec::new();
+/// types.extend_from_slice(&5u32.to_be_bytes()); // Length: 5
+/// types.extend_from_slice(b"Hello"); // Payload
 ///
-/// let mut reader = &data[..];
+/// let mut reader = &types[..];
 /// let message = read_frame(&mut reader).await?;
 /// assert_eq!(message, b"Hello");
 /// # Ok(())

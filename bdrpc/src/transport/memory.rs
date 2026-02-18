@@ -116,7 +116,7 @@ struct MemoryWriter {
 impl MemoryTransport {
     /// Creates a pair of connected memory transports.
     ///
-    /// The two transports are connected such that data written to one can be
+    /// The two transports are connected such that types written to one can be
     /// read from the other, and vice versa.
     ///
     /// # Arguments
@@ -276,7 +276,7 @@ impl AsyncWrite for MemoryTransport {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
-        // Try to send the data
+        // Try to send the types
         match this.writer.tx.try_send(buf.to_vec()) {
             Ok(()) => Poll::Ready(Ok(buf.len())),
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
@@ -314,10 +314,10 @@ mod tests {
     async fn test_memory_transport_basic() {
         let (mut tx, mut rx) = MemoryTransport::pair_default();
 
-        // Write data
+        // Write types
         tx.write_all(b"Hello, world!").await.unwrap();
 
-        // Read data
+        // Read types
         let mut buffer = vec![0u8; 1024];
         let n = rx.read(&mut buffer).await.unwrap();
         assert_eq!(&buffer[..n], b"Hello, world!");

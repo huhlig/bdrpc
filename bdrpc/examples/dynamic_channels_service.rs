@@ -123,7 +123,7 @@ trait Data {
     /// Execute a SQL query
     async fn query(&self, sql: String) -> Result<Vec<String>, String>;
 
-    /// Insert data into a table
+    /// Insert types into a table
     async fn insert(&self, table: String, data: String) -> Result<u64, String>;
 }
 
@@ -161,7 +161,6 @@ impl AuthService {
     }
 }
 
-#[async_trait::async_trait]
 impl AuthServer for AuthService {
     async fn login(&self, username: String, password: String) -> Result<String, String> {
         println!(
@@ -202,7 +201,6 @@ impl DataService {
     }
 }
 
-#[async_trait::async_trait]
 impl DataServer for DataService {
     async fn query(&self, sql: String) -> Result<Vec<String>, String> {
         println!("[{}] 💾 Query request: {}", self.name, sql);
@@ -219,7 +217,7 @@ impl DataServer for DataService {
 
     async fn insert(&self, table: String, data: String) -> Result<u64, String> {
         println!(
-            "[{}] 💾 Insert request: table='{}', data='{}'",
+            "[{}] 💾 Insert request: table='{}', types='{}'",
             self.name, table, data
         );
 
@@ -243,7 +241,6 @@ impl LogService {
     }
 }
 
-#[async_trait::async_trait]
 impl LogServer for LogService {
     async fn log(&self, level: String, message: String) -> Result<(), String> {
         println!("[{}] 📝 Log: [{}] {}", self.name, level, message);
@@ -445,11 +442,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   Version: 1\n");
 
     let data_channel_id = ChannelId::new();
-    println!("Step 2: Gateway creates data channel");
+    println!("Step 2: Gateway creates types channel");
     println!("   ✅ Assigned Channel ID: {}", data_channel_id);
     println!("   ✅ Independent flow control from auth channel\n");
 
-    // Create bidirectional in-memory channels for data service
+    // Create bidirectional in-memory channels for types service
     let (data_client_to_server_sender, data_client_to_server_receiver) =
         Channel::<DataProtocol>::new_in_memory(data_channel_id, 10);
     let (data_server_to_client_sender, data_server_to_client_receiver) =
@@ -467,7 +464,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let data_dispatcher = DataDispatcher::new(data_service);
     println!("   ✅ DataService and DataDispatcher created\n");
 
-    // Spawn server handler for data service
+    // Spawn server handler for types service
     let _data_server_task = tokio::spawn(async move {
         let mut receiver = data_client_to_server_receiver;
         while let Some(request) = receiver.recv().await {

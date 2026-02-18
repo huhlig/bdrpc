@@ -361,7 +361,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   Version: 1\n");
 
     let data_channel_id = ChannelId::new();
-    println!("Step 2: Gateway creates data channel");
+    println!("Step 2: Gateway creates types channel");
     println!("   ✅ Assigned Channel ID: {}", data_channel_id);
     println!("   ✅ Independent flow control from auth channel\n");
 
@@ -375,7 +375,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .insert(data_channel_id, "DataService".to_string());
     }
 
-    println!("Step 3: Client uses data channel");
+    println!("Step 3: Client uses types channel");
     let data_sender_clone = data_sender.clone();
     let data_task = tokio::spawn(async move {
         if let Some(DataProtocol::Query { sql }) = data_receiver.recv().await {

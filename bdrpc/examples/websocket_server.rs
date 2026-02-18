@@ -42,12 +42,12 @@
 //! ws.onopen = () => {
 //!     console.log('Connected');
 //!     // Send a simple message
-//!     const data = new TextEncoder().encode('Hello from browser!');
-//!     ws.send(data);
+//!     const types = new TextEncoder().encode('Hello from browser!');
+//!     ws.send(types);
 //! };
 //! ws.onmessage = (event) => {
-//!     const data = new Uint8Array(event.data);
-//!     const text = new TextDecoder().decode(data);
+//!     const types = new Uint8Array(event.types);
+//!     const text = new TextDecoder().decode(types);
 //!     console.log('Received:', text);
 //! };
 //! ```
@@ -81,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  const ws = new WebSocket('ws://localhost:8080');");
     println!("  ws.binaryType = 'arraybuffer';");
     println!("  ws.onopen = () => ws.send(new TextEncoder().encode('Hello!'));");
-    println!("  ws.onmessage = (e) => console.log(new TextDecoder().decode(e.data));");
+    println!("  ws.onmessage = (e) => console.log(new TextDecoder().decode(e.types));");
 
     // Accept connections in a loop
     loop {
@@ -121,7 +121,7 @@ async fn handle_connection(
     let mut message_count = 0u64;
 
     loop {
-        // Read data from the WebSocket
+        // Read types from the WebSocket
         match transport.read(&mut buffer).await {
             Ok(0) => {
                 // Connection closed

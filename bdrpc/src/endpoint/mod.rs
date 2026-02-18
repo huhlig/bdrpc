@@ -322,7 +322,7 @@
 //!
 //! - Default 16 MB limit prevents memory exhaustion
 //! - Increase for large message scenarios (e.g., file transfer)
-//! - Consider streaming for very large data
+//! - Consider streaming for very large types
 //!
 //! ## Reconnection Strategy
 //!

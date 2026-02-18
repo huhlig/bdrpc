@@ -91,7 +91,7 @@ pub enum TransportError {
         source: Option<io::Error>,
     },
 
-    /// Failed to read data from the transport.
+    /// Failed to read types from the transport.
     ///
     /// This error occurs during read operations and may indicate a transient
     /// network issue or a permanent connection failure.
@@ -102,7 +102,7 @@ pub enum TransportError {
         source: io::Error,
     },
 
-    /// Failed to write data to the transport.
+    /// Failed to write types to the transport.
     ///
     /// This error occurs during write operations and may indicate backpressure,
     /// a transient network issue, or a permanent connection failure.

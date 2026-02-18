@@ -87,7 +87,7 @@ pub trait FileTransfer {
 async fn example_usage(client: &FileTransferClient) -> Result<(), Box<dyn std::error::Error>> {
     // Example 1: Upload from in-memory buffer
     let data = vec![0u8; 10_000_000]; // 10 MB
-    client.upload_file("data.bin".to_string(), data).await?;
+    client.upload_file("types.bin".to_string(), data).await?;
     
     // Example 2: Upload from file
     let file = File::open("large_file.bin").await?;
@@ -99,11 +99,11 @@ async fn example_usage(client: &FileTransferClient) -> Result<(), Box<dyn std::e
     let reader = tokio_util::io::StreamReader::new(stream);
     client.upload_stream("downloaded.bin".to_string(), reader).await?;
     
-    // Example 4: Upload from compressed data on-the-fly
+    // Example 4: Upload from compressed types on-the-fly
     use async_compression::tokio::bufread::GzipEncoder;
-    let file = File::open("data.txt").await?;
+    let file = File::open("types.txt").await?;
     let compressed = GzipEncoder::new(tokio::io::BufReader::new(file));
-    client.upload_stream("data.txt.gz".to_string(), compressed).await?;
+    client.upload_stream("types.txt.gz".to_string(), compressed).await?;
     
     Ok(())
 }

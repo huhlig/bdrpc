@@ -31,7 +31,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
 
-/// Test basic WebSocket connection and data transfer.
+/// Test basic WebSocket connection and types transfer.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_websocket_basic_connection() {
     // Start WebSocket listener
@@ -51,7 +51,7 @@ async fn test_websocket_basic_connection() {
             .await
             .expect("Failed to accept connection");
 
-        // Echo received data
+        // Echo received types
         let mut buf = vec![0u8; 1024];
         let n = transport.read(&mut buf).await.expect("Failed to read");
         transport
@@ -69,7 +69,7 @@ async fn test_websocket_basic_connection() {
         .await
         .expect("Failed to connect");
 
-    // Send test data
+    // Send test types
     let test_data = b"Hello, WebSocket!";
     client.write_all(test_data).await.expect("Failed to write");
 
@@ -98,7 +98,7 @@ async fn test_websocket_large_messages() {
 
     let server_addr = listener.local_addr().expect("Failed to get address");
 
-    // Server echoes data
+    // Server echoes types
     let server_handle = tokio::spawn(async move {
         let mut transport = listener.accept().await.expect("Failed to accept");
         let mut buf = vec![0u8; 10 * 1024 * 1024];
@@ -116,7 +116,7 @@ async fn test_websocket_large_messages() {
         .await
         .expect("Failed to connect");
 
-    // Send 1 MB of data
+    // Send 1 MB of types
     let test_data = vec![0x42u8; 1024 * 1024];
     client.write_all(&test_data).await.expect("Failed to write");
 
@@ -344,7 +344,7 @@ async fn test_websocket_graceful_shutdown() {
         .expect("Server failed");
 }
 
-/// Test WebSocket with binary data patterns.
+/// Test WebSocket with binary types patterns.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_websocket_binary_patterns() {
     let config = WebSocketConfig::default();

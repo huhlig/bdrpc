@@ -300,7 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 // QUIC's connection migration makes background sync reliable
 async fn background_sync(endpoint: &mut Endpoint<impl Serializer>) {
     loop {
-        // Sync data
+        // Sync types
         // Connection survives:
         // - App backgrounding
         // - Network switches

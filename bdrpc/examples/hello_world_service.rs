@@ -71,7 +71,6 @@ trait Greeting {
 struct MyGreetingService;
 
 /// Implement the generated GreetingServer trait.
-#[async_trait::async_trait]
 impl GreetingServer for MyGreetingService {
     async fn greet(&self, name: String) -> Result<String, String> {
         println!("   Server: Received greeting request for '{}'", name);

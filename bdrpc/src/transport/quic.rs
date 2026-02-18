@@ -96,7 +96,7 @@ static TRANSPORT_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub struct QuicConfig {
     /// Maximum idle timeout before connection is closed.
     ///
-    /// If no data is sent or received for this duration, the connection
+    /// If no types is sent or received for this duration, the connection
     /// will be closed. Set to a higher value for long-lived connections.
     pub max_idle_timeout: Duration,
 
@@ -115,7 +115,7 @@ pub struct QuicConfig {
 
     /// Enable 0-RTT connection establishment.
     ///
-    /// When enabled, clients can send data in the first packet when
+    /// When enabled, clients can send types in the first packet when
     /// resuming a previous connection, reducing latency.
     pub enable_0rtt: bool,
 
@@ -237,7 +237,7 @@ impl QuicTransport {
             .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
             .with_no_client_auth();
 
-        // Enable early data for 0-RTT if configured
+        // Enable early types for 0-RTT if configured
         crypto.enable_early_data = config.enable_0rtt;
 
         let mut client_config = quinn::ClientConfig::new(Arc::new(

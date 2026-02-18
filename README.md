@@ -113,7 +113,6 @@ trait Calculator {
 // Implement the generated server trait
 struct MyCalculator;
 
-#[async_trait::async_trait]
 impl CalculatorServer for MyCalculator {
     async fn add(&self, a: i32, b: i32) -> Result<i32, String> {
         Ok(a + b)

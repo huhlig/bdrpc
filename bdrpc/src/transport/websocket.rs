@@ -21,7 +21,7 @@
 //!
 //! # Features
 //!
-//! - Binary message support for efficient data transfer
+//! - Binary message support for efficient types transfer
 //! - Automatic ping/pong keepalive mechanism
 //! - Support for both `ws://` and `wss://` (secure WebSocket)
 //! - Configurable frame and message size limits
@@ -270,7 +270,7 @@ impl WebSocketTransport {
         &self.config
     }
 
-    /// Handle incoming WebSocket messages and extract binary data.
+    /// Handle incoming WebSocket messages and extract binary types.
     async fn read_message(&self) -> Result<Vec<u8>, TransportError> {
         let mut stream = self.stream.lock().await;
 
@@ -350,12 +350,12 @@ impl AsyncRead for WebSocketTransport {
         // Try to use tokio's block_in_place for better async handling
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                // Check if we have buffered data
+                // Check if we have buffered types
                 let mut read_buffer = this.read_buffer.lock().await;
                 let mut read_pos = this.read_pos.lock().await;
 
                 if *read_pos < read_buffer.len() {
-                    // We have buffered data, copy it
+                    // We have buffered types, copy it
                     let remaining = read_buffer.len() - *read_pos;
                     let to_copy = remaining.min(buf.remaining());
                     buf.put_slice(&read_buffer[*read_pos..*read_pos + to_copy]);
@@ -379,7 +379,7 @@ impl AsyncRead for WebSocketTransport {
                         let to_copy = data.len().min(buf.remaining());
                         buf.put_slice(&data[..to_copy]);
 
-                        // Buffer any remaining data
+                        // Buffer any remaining types
                         if to_copy < data.len() {
                             let mut read_buffer = this.read_buffer.lock().await;
                             let mut read_pos = this.read_pos.lock().await;

@@ -131,7 +131,6 @@ impl MyChatService {
 }
 
 /// Implement the generated ChatServer trait.
-#[async_trait::async_trait]
 impl ChatServer for MyChatService {
     async fn join(&self, username: String) -> Result<String, String> {
         println!(

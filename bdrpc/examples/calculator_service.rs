@@ -94,7 +94,6 @@ impl MyCalculator {
 }
 
 /// Implement the generated CalculatorServer trait.
-#[async_trait::async_trait]
 impl CalculatorServer for MyCalculator {
     async fn add(&self, a: i32, b: i32) -> Result<i32, String> {
         println!("[{}] Computing: {} + {} = {}", self.name, a, b, a + b);

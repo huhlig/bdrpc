@@ -40,7 +40,7 @@
 //! - Defining FileTransferProtocol enum with streaming messages
 //! - Implementing Protocol trait for file transfer
 //! - Manual chunk handling and sequencing
-//! - Streaming large data in chunks
+//! - Streaming large types in chunks
 //! - Progress tracking during transfer
 //! - Memory-efficient file handling
 //! - Data integrity verification (CRC32)
@@ -86,7 +86,7 @@ const CHUNK_SIZE: usize = 64 * 1024;
 ///
 /// This protocol demonstrates:
 /// - Transfer initiation with metadata
-/// - Chunked data transfer
+/// - Chunked types transfer
 /// - Progress reporting
 /// - Transfer completion with verification
 /// - Error handling
@@ -100,7 +100,7 @@ enum FileTransferProtocol {
         total_size: u64,
         chunk_size: usize,
     },
-    /// Send a chunk of data
+    /// Send a chunk of types
     Chunk {
         sequence: u64,
         data: Vec<u8>,
@@ -160,7 +160,7 @@ fn calculate_checksum(data: &[u8]) -> u32 {
     !crc
 }
 
-/// Generate dummy file data for demonstration
+/// Generate dummy file types for demonstration
 fn generate_file_data(size: usize) -> Vec<u8> {
     // Generate a pattern that's easy to verify
     (0..size).map(|i| (i % 256) as u8).collect()
@@ -178,8 +178,8 @@ async fn run_sender() -> Result<(), Box<dyn Error>> {
     println!("   ✅ Channel created (ID: {})", channel_id);
     println!("   ℹ️  Buffer size: 100 messages for flow control\n");
 
-    // Step 2: Generate file data
-    println!("📄 Step 2: Generating file data");
+    // Step 2: Generate file types
+    println!("📄 Step 2: Generating file types");
     let file_size = 10 * 1024 * 1024; // 10 MB
     let filename = "demo_file.bin".to_string();
     let file_data = generate_file_data(file_size);
@@ -416,7 +416,7 @@ async fn run_receiver() -> Result<(), Box<dyn Error>> {
                     return Ok(());
                 }
 
-                // Store data
+                // Store types
                 received_data.extend_from_slice(&data);
                 expected_sequence += 1;
 
@@ -489,7 +489,7 @@ async fn run_receiver() -> Result<(), Box<dyn Error>> {
                 let elapsed = start_time.elapsed();
                 let rate = received_data.len() as f64 / elapsed.as_secs_f64() / 1024.0 / 1024.0;
 
-                println!("   ✅ All data received and verified!");
+                println!("   ✅ All types received and verified!");
                 println!("   📊 Total size: {} bytes", received_data.len());
                 println!("   ⏱️  Time: {:.2}s", elapsed.as_secs_f64());
                 println!("   📊 Rate: {:.2} MB/s", rate);
@@ -557,7 +557,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   • Match statements for chunk handling");
     println!("   • Manual sequence tracking and validation");
     println!("   • Streaming large files in chunks (64KB)");
-    println!("   • Memory-efficient data handling");
+    println!("   • Memory-efficient types handling");
     println!("   • Progress tracking and reporting");
     println!("   • Data integrity verification (CRC32)");
     println!("   • Chunk acknowledgment for reliability");
@@ -568,8 +568,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   • Protocol enum: Define all streaming message types");
     println!("   • Manual routing: Match statements for each message");
     println!("   • State management: Track sequence numbers manually");
-    println!("   • Chunking: Break large data into manageable pieces");
-    println!("   • Checksums: Verify data integrity at chunk and file level");
+    println!("   • Chunking: Break large types into manageable pieces");
+    println!("   • Checksums: Verify types integrity at chunk and file level");
     println!("   • Flow control: Buffer size prevents overwhelming receiver");
     println!("   • Progress: Real-time feedback on transfer status");
     println!("   • Acknowledgments: Ensure reliable delivery");

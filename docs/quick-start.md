@@ -55,12 +55,9 @@ trait Calculator {
 Implement the generated `CalculatorServer` trait:
 
 ```rust
-use async_trait::async_trait;
-
 /// Our calculator implementation
 struct MyCalculator;
 
-#[async_trait]
 impl CalculatorServer for MyCalculator {
     async fn add(&self, a: i32, b: i32) -> Result<i32, String> {
         println!("Computing: {} + {} = {}", a, b, a + b);

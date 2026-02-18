@@ -118,7 +118,7 @@ use bdrpc::serialization::buffer_pool::BufferPool;
 let mut buffer = BufferPool::get(4096);
 
 // Use it
-buffer.extend_from_slice(b"data");
+buffer.extend_from_slice(b"types");
 
 // Automatically returned to pool on drop
 drop(buffer);
@@ -231,7 +231,7 @@ Transparent compression for bandwidth-limited scenarios:
 #[cfg(feature = "compression")]
 use bdrpc::transport::CompressionTransport;
 
-// Reduces bandwidth by 50-80% for text data
+// Reduces bandwidth by 50-80% for text types
 // Adds CPU overhead for compression/decompression
 // Best for slow networks or large messages
 ```

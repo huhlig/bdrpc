@@ -17,7 +17,7 @@
 //! # File Transfer Service Example - Using AsyncRead for True Streaming
 //!
 //! This example demonstrates how to implement true streaming file transfers
-//! using AsyncRead, where data is read and sent chunk-by-chunk without
+//! using AsyncRead, where types is read and sent chunk-by-chunk without
 //! buffering the entire file in memory.
 //!
 //! ## The Challenge
@@ -26,7 +26,7 @@
 //! However, we can work around this by:
 //! 1. Using a chunked protocol at the RPC level
 //! 2. Providing client-side helper methods that stream from AsyncRead
-//! 3. Server reassembles chunks into complete data
+//! 3. Server reassembles chunks into complete types
 //!
 //! This follows the pattern described in ADR-011 section 1.1.
 //!
@@ -77,7 +77,7 @@ trait FileTransfer {
         total_size: Option<u64>, // None for unknown size (true streaming)
     ) -> Result<String, String>; // Returns transfer_id
 
-    /// Send a chunk of data for an active transfer.
+    /// Send a chunk of types for an active transfer.
     async fn send_chunk(
         &self,
         transfer_id: String,
@@ -110,7 +110,7 @@ fn calculate_checksum(data: &[u8]) -> u32 {
     !crc
 }
 
-/// Generate dummy file data for demonstration
+/// Generate dummy file types for demonstration
 fn generate_file_data(size: usize) -> Vec<u8> {
     (0..size).map(|i| (i % 256) as u8).collect()
 }
@@ -173,7 +173,6 @@ impl MyFileTransferService {
 }
 
 /// Implement the generated FileTransferServer trait.
-#[async_trait::async_trait]
 impl FileTransferServer for MyFileTransferService {
     async fn start_transfer(
         &self,
@@ -542,7 +541,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   • Client extension trait provides upload_from_reader()");
     println!("   • upload_from_reader() accepts any AsyncRead source");
     println!("   • Chunks are read and sent immediately (no buffering)");
-    println!("   • Server reassembles chunks into complete data");
+    println!("   • Server reassembles chunks into complete types");
 
     println!("\n🔍 Why this approach works:");
     println!("   • Service macro doesn't support impl AsyncRead directly");

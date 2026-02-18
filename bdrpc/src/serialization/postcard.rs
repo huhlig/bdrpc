@@ -74,8 +74,8 @@ use crate::serialization::{DeserializationError, SerializationError, Serializer}
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create with 1MB size limit
 /// let serializer = PostcardSerializer::new().with_max_size(1024 * 1024);
-/// let data = Data { value: 12345 };
-/// let bytes = serializer.serialize(&data)?;
+/// let types = Data { value: 12345 };
+/// let bytes = serializer.serialize(&types)?;
 /// # Ok(())
 /// # }
 /// ```
@@ -103,7 +103,7 @@ impl PostcardSerializer {
     /// Sets a maximum size limit for serialization.
     ///
     /// This can help prevent denial-of-service attacks by limiting the maximum
-    /// size of serialized data.
+    /// size of serialized types.
     ///
     /// # Examples
     ///
@@ -273,7 +273,7 @@ mod tests {
         // Serialize with no limit
         let bytes = PostcardSerializer::new().serialize(&message).unwrap();
 
-        // Deserialization should fail because data exceeds max size
+        // Deserialization should fail because types exceeds max size
         let result: Result<TestMessage, _> = serializer.deserialize(&bytes);
         assert!(result.is_err());
 

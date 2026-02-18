@@ -56,7 +56,7 @@
 //! // Define your protocol
 //! #[derive(Debug, Clone, PartialEq)]
 //! enum MyProtocol {
-//!     Request { id: u32, data: String },
+//!     Request { id: u32, types: String },
 //!     Response { id: u32, result: String },
 //! }
 //!
@@ -84,7 +84,7 @@
 //! // Send a request from client to server
 //! client.send(MyProtocol::Request {
 //!     id: 1,
-//!     data: "Hello".to_string(),
+//!     types: "Hello".to_string(),
 //! }).await?;
 //!
 //! // Receive on server

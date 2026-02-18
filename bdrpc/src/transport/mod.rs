@@ -63,7 +63,7 @@
 //! // Connect to a remote endpoint
 //! let mut transport = TcpTransport::connect("127.0.0.1:8080").await?;
 //!
-//! // Write data
+//! // Write types
 //! transport.write_all(b"Hello, world!").await?;
 //!
 //! // Read response

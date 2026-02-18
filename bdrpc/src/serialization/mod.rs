@@ -71,7 +71,7 @@
 //! ```
 //!
 //! - **Length**: u32 in big-endian format
-//! - **Payload**: Serialized message data
+//! - **Payload**: Serialized message types
 //! - **Max size**: 16 MB (configurable)
 //!
 //! # Buffer Pooling
@@ -177,19 +177,19 @@
 //! }
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let data = Data {
+//! let types = Data {
 //!     value: 12345,
 //!     name: "test".to_string(),
 //! };
 //!
 //! // Postcard: compact binary
 //! let postcard = PostcardSerializer::default();
-//! let postcard_bytes = postcard.serialize(&data)?;
+//! let postcard_bytes = postcard.serialize(&types)?;
 //! println!("Postcard: {} bytes", postcard_bytes.len());
 //!
 //! // JSON: human-readable
 //! let json = JsonSerializer::default();
-//! let json_bytes = json.serialize(&data)?;
+//! let json_bytes = json.serialize(&types)?;
 //! println!("JSON: {} bytes", json_bytes.len());
 //! println!("JSON: {}", String::from_utf8_lossy(&json_bytes));
 //! # Ok(())
@@ -263,7 +263,7 @@
 //!
 //! #[derive(Deserialize)]
 //! struct Message {
-//!     data: String,
+//!     types: String,
 //! }
 //!
 //! # fn example() {

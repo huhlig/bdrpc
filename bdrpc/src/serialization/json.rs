@@ -38,7 +38,7 @@ use crate::serialization::{DeserializationError, SerializationError, Serializer}
 ///
 /// - Larger output size than binary formats
 /// - Slower serialization/deserialization
-/// - Limited type support (no binary data without encoding)
+/// - Limited type support (no binary types without encoding)
 ///
 /// # Examples
 ///

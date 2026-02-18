@@ -77,7 +77,6 @@ trait MixedStyleService {
 
 struct MyService;
 
-#[async_trait::async_trait]
 impl MixedStyleServiceServer for MyService {
     async fn async_add(&self, a: i32, b: i32) -> Result<i32, String> {
         println!("  [Server] async_add({}, {}) = {}", a, b, a + b);

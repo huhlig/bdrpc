@@ -101,7 +101,7 @@ pub trait Serializer: Send + Sync + 'static {
     /// Returns a [`SerializationError`] if the value cannot be serialized.
     /// Common causes include:
     /// - Unsupported types
-    /// - Invalid data structures
+    /// - Invalid types structures
     /// - Memory allocation failures
     ///
     /// # Examples
@@ -132,10 +132,10 @@ pub trait Serializer: Send + Sync + 'static {
     ///
     /// Returns a [`DeserializationError`] if the bytes cannot be deserialized.
     /// Common causes include:
-    /// - Corrupted data
+    /// - Corrupted types
     /// - Version mismatch
     /// - Invalid format
-    /// - Incomplete data
+    /// - Incomplete types
     ///
     /// # Examples
     ///

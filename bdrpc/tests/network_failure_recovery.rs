@@ -280,11 +280,11 @@ async fn test_concurrent_connection_failures() {
     }
 }
 
-/// Test graceful handling of partial data transmission.
+/// Test graceful handling of partial types transmission.
 #[tokio::test]
 #[allow(deprecated)]
 async fn test_partial_data_transmission() {
-    // Start server that sends partial data then closes
+    // Start server that sends partial types then closes
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind");
@@ -292,7 +292,7 @@ async fn test_partial_data_transmission() {
 
     let server_handle = tokio::spawn(async move {
         if let Ok((mut socket, _)) = listener.accept().await {
-            // Send partial handshake data then close
+            // Send partial handshake types then close
             let _ = socket.write_all(b"partial").await;
             tokio::time::sleep(Duration::from_millis(50)).await;
             // Close without completing handshake

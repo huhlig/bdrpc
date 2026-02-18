@@ -276,8 +276,8 @@ where
 {
     /// Wraps an existing transport with bidirectional compression.
     ///
-    /// This creates a compressed transport that compresses all data written
-    /// and decompresses all data read. Both sides of the connection must use
+    /// This creates a compressed transport that compresses all types written
+    /// and decompresses all types read. Both sides of the connection must use
     /// the same compression configuration.
     ///
     /// # Arguments
@@ -498,12 +498,12 @@ mod tests {
         let mut compressed_client = CompressedTransport::wrap(client, config).await.unwrap();
         let mut compressed_server = CompressedTransport::wrap(server, config).await.unwrap();
 
-        // Write data from client
+        // Write types from client
         let data = b"Hello, compressed world!";
         compressed_client.write_all(data).await.unwrap();
         compressed_client.flush().await.unwrap();
 
-        // Read data on server
+        // Read types on server
         let mut buffer = vec![0u8; 1024];
         let n = compressed_server.read(&mut buffer).await.unwrap();
         assert_eq!(&buffer[..n], data);
@@ -517,12 +517,12 @@ mod tests {
         let mut compressed_client = CompressedTransport::wrap(client, config).await.unwrap();
         let mut compressed_server = CompressedTransport::wrap(server, config).await.unwrap();
 
-        // Write data from client
+        // Write types from client
         let data = b"Hello, zstd compressed world!";
         compressed_client.write_all(data).await.unwrap();
         compressed_client.flush().await.unwrap();
 
-        // Read data on server
+        // Read types on server
         let mut buffer = vec![0u8; 1024];
         let n = compressed_server.read(&mut buffer).await.unwrap();
         assert_eq!(&buffer[..n], data);
@@ -536,12 +536,12 @@ mod tests {
         let mut compressed_client = CompressedTransport::wrap(client, config).await.unwrap();
         let mut compressed_server = CompressedTransport::wrap(server, config).await.unwrap();
 
-        // Create large repetitive data (should compress well)
+        // Create large repetitive types (should compress well)
         let data = vec![b'A'; 10000];
         compressed_client.write_all(&data).await.unwrap();
         compressed_client.flush().await.unwrap();
 
-        // Read data on server
+        // Read types on server
         let mut buffer = vec![0u8; 20000];
         let n = compressed_server.read(&mut buffer).await.unwrap();
         assert_eq!(&buffer[..n], &data[..]);
@@ -591,12 +591,12 @@ mod tests {
         let mut compressed_client = CompressedTransport::wrap(client, config).await.unwrap();
         let mut compressed_server = CompressedTransport::wrap(server, config).await.unwrap();
 
-        // Write data from client
+        // Write types from client
         let data = b"Hello, lz4 compressed world!";
         compressed_client.write_all(data).await.unwrap();
         compressed_client.flush().await.unwrap();
 
-        // Read data on server
+        // Read types on server
         let mut buffer = vec![0u8; 1024];
         let n = compressed_server.read(&mut buffer).await.unwrap();
         assert_eq!(&buffer[..n], data);
@@ -610,12 +610,12 @@ mod tests {
         let mut compressed_client = CompressedTransport::wrap(client, config).await.unwrap();
         let mut compressed_server = CompressedTransport::wrap(server, config).await.unwrap();
 
-        // Create large repetitive data (should compress well)
+        // Create large repetitive types (should compress well)
         let data = vec![b'B'; 10000];
         compressed_client.write_all(&data).await.unwrap();
         compressed_client.flush().await.unwrap();
 
-        // Read data on server
+        // Read types on server
         let mut buffer = vec![0u8; 20000];
         let n = compressed_server.read(&mut buffer).await.unwrap();
         assert_eq!(&buffer[..n], &data[..]);

@@ -137,7 +137,7 @@ impl TransportMetadata {
 /// println!("Connected via {}", metadata.transport_type);
 /// println!("Peer: {:?}", metadata.peer_addr);
 ///
-/// // Write data
+/// // Write types
 /// transport.write_all(b"Hello, server!").await?;
 ///
 /// // Read response

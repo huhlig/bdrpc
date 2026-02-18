@@ -76,7 +76,6 @@ impl TestCalculator {
     }
 }
 
-#[async_trait::async_trait]
 impl CalculatorServiceServer for TestCalculator {
     async fn add(&self, a: i32, b: i32) -> Result<i32, String> {
         self.call_count.fetch_add(1, Ordering::Relaxed);

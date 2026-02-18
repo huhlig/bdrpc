@@ -18,7 +18,7 @@
 //!
 //! These tests verify QUIC transport functionality including:
 //! - Basic client-server communication
-//! - Binary data transfer
+//! - Binary types transfer
 //! - Connection lifecycle management
 //! - Error handling and recovery
 //! - Configuration options
@@ -39,7 +39,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
 
-/// Test basic QUIC connection and data transfer.
+/// Test basic QUIC connection and types transfer.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_quic_basic_connection() {
     // Start QUIC listener
@@ -59,7 +59,7 @@ async fn test_quic_basic_connection() {
             .await
             .expect("Failed to accept connection");
 
-        // Echo received data
+        // Echo received types
         let mut buf = vec![0u8; 1024];
         let n = transport.read(&mut buf).await.expect("Failed to read");
         transport
@@ -79,7 +79,7 @@ async fn test_quic_basic_connection() {
         .await
         .expect("Failed to connect");
 
-    // Send test data
+    // Send test types
     let test_data = b"Hello, QUIC!";
     client.write_all(test_data).await.expect("Failed to write");
 
@@ -108,12 +108,12 @@ async fn test_quic_large_messages() {
 
     let server_addr = listener.local_addr().expect("Failed to get address");
 
-    // Server echoes data
+    // Server echoes types
     let server_handle = tokio::spawn(async move {
         let mut transport = listener.accept().await.expect("Failed to accept");
         let mut buf = vec![0u8; 10 * 1024 * 1024];
 
-        // Read all data from client
+        // Read all types from client
         let mut total_read = 0;
         loop {
             match transport.read(&mut buf[total_read..]).await {
@@ -131,13 +131,13 @@ async fn test_quic_large_messages() {
             }
         }
 
-        // Echo all data back
+        // Echo all types back
         transport
             .write_all(&buf[..total_read])
             .await
             .expect("Failed to write");
 
-        // Keep transport alive longer to allow client to read all data
+        // Keep transport alive longer to allow client to read all types
         tokio::time::sleep(Duration::from_secs(2)).await;
     });
 
@@ -147,11 +147,11 @@ async fn test_quic_large_messages() {
         .await
         .expect("Failed to connect");
 
-    // Send 1 MB of data
+    // Send 1 MB of types
     let test_data = vec![0x42u8; 1024 * 1024];
     client.write_all(&test_data).await.expect("Failed to write");
 
-    // Receive echo - read in loop until we get all data
+    // Receive echo - read in loop until we get all types
     let mut buf = vec![0u8; 2 * 1024 * 1024];
     let mut total_read = 0;
     while total_read < test_data.len() {
@@ -331,7 +331,7 @@ async fn test_quic_metadata() {
         assert!(metadata.peer_addr.is_some());
         assert!(metadata.id.as_u64() > 0);
 
-        // Read the data sent by client to keep stream alive
+        // Read the types sent by client to keep stream alive
         let mut buf = vec![0u8; 1024];
         let _ = transport.read(&mut buf).await;
 
@@ -410,7 +410,7 @@ async fn test_quic_graceful_shutdown() {
         .expect("Server failed");
 }
 
-/// Test QUIC with binary data patterns.
+/// Test QUIC with binary types patterns.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_quic_binary_patterns() {
     let config = QuicConfig::default();
@@ -554,7 +554,7 @@ async fn test_quic_0rtt_support() {
         .await
         .expect("Failed to connect");
 
-    let test_data = b"0-RTT test data";
+    let test_data = b"0-RTT test types";
     client.write_all(test_data).await.expect("Failed to write");
 
     let mut buf = vec![0u8; 1024];

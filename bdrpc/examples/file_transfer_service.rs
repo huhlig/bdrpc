@@ -24,7 +24,7 @@
 //!
 //! - Defining a file transfer service with the `#[bdrpc::service]` macro
 //! - Implementing the generated server trait
-//! - Streaming large data in chunks
+//! - Streaming large types in chunks
 //! - Progress tracking during transfer
 //! - Data integrity verification (CRC32)
 //! - Using the dispatcher for request routing
@@ -74,7 +74,7 @@ trait FileTransfer {
         chunk_size: usize,
     ) -> Result<String, String>;
 
-    /// Send a chunk of data
+    /// Send a chunk of types
     async fn send_chunk(&self, sequence: u64, data: Vec<u8>, checksum: u32) -> Result<u64, String>;
 
     /// End the transfer
@@ -101,7 +101,7 @@ fn calculate_checksum(data: &[u8]) -> u32 {
     !crc
 }
 
-/// Generate dummy file data for demonstration
+/// Generate dummy file types for demonstration
 fn generate_file_data(size: usize) -> Vec<u8> {
     (0..size).map(|i| (i % 256) as u8).collect()
 }
@@ -130,7 +130,6 @@ impl MyFileTransferService {
 }
 
 /// Implement the generated FileTransferServer trait.
-#[async_trait::async_trait]
 impl FileTransferServer for MyFileTransferService {
     async fn start_transfer(
         &self,
@@ -169,7 +168,7 @@ impl FileTransferServer for MyFileTransferService {
             return Err(format!("Checksum mismatch for chunk {}", sequence));
         }
 
-        // Store data
+        // Store types
         let mut received = self.received_data.lock().await;
         received.extend_from_slice(&data);
 
@@ -223,7 +222,7 @@ impl FileTransferServer for MyFileTransferService {
             let elapsed = start.elapsed();
             let rate = received.len() as f64 / elapsed.as_secs_f64() / 1024.0 / 1024.0;
 
-            println!("   ✅ All data received and verified!");
+            println!("   ✅ All types received and verified!");
             println!("   📊 Total size: {} bytes", received.len());
             println!("   ⏱️  Time: {:.2}s", elapsed.as_secs_f64());
             println!("   📊 Rate: {:.2} MB/s", rate);
@@ -249,8 +248,8 @@ async fn run_sender(
     println!("📤 Starting File Sender");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    // Generate file data
-    println!("📄 Generating file data");
+    // Generate file types
+    println!("📄 Generating file types");
     let file_size = 10 * 1024 * 1024; // 10 MB
     let filename = "demo_file.bin".to_string();
     let file_data = generate_file_data(file_size);

@@ -590,24 +590,24 @@ mod serialization_tests {
     #[test]
     fn test_v2_with_optional_fields() {
         // V1 format (no metadata)
-        let v1_json = r#"{"DataResponse":{"value":"data"}}"#;
+        let v1_json = r#"{"DataResponse":{"value":"types"}}"#;
         let v2_msg: NewApi = serde_json::from_str(v1_json).unwrap();
         
         match v2_msg {
             NewApi::DataResponse { value, metadata } => {
-                assert_eq!(value, "data");
+                assert_eq!(value, "types");
                 assert!(metadata.is_none());
             }
             _ => panic!("Wrong message type"),
         }
         
         // V2 format (with metadata)
-        let v2_json = r#"{"DataResponse":{"value":"data","metadata":{"timestamp":123,"version":2}}}"#;
+        let v2_json = r#"{"DataResponse":{"value":"types","metadata":{"timestamp":123,"version":2}}}"#;
         let v2_msg: NewApi = serde_json::from_str(v2_json).unwrap();
         
         match v2_msg {
             NewApi::DataResponse { value, metadata } => {
-                assert_eq!(value, "data");
+                assert_eq!(value, "types");
                 assert!(metadata.is_some());
             }
             _ => panic!("Wrong message type"),

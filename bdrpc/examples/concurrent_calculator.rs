@@ -38,7 +38,6 @@ trait Calculator {
 // Implement the calculator service
 struct CalculatorService;
 
-#[async_trait::async_trait]
 impl CalculatorServer for CalculatorService {
     async fn add(&self, a: i32, b: i32) -> Result<i32, String> {
         Ok(a + b)

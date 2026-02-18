@@ -113,8 +113,9 @@ pub fn generate_protocol_enum(service: &ServiceDef) -> TokenStream {
                 let ty = &param.ty;
                 if param.is_optional {
                     // Add serde default for optional fields
+                    // Note: We always generate serde attributes since they're gated by the derive on the enum
                     quote! {
-                        #[cfg_attr(feature = "serde", serde(default))]
+                        #[serde(default)]
                         #name: #ty
                     }
                 } else {
@@ -267,15 +268,22 @@ pub fn generate_protocol_enum(service: &ServiceDef) -> TokenStream {
         #[doc = ""]
         #[doc = "This enum contains request and response variants for each method in the service."]
         #[doc = "It is used for serialization and deserialization of RPC messages."]
-        #[derive(Debug, Clone)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        #[cfg_attr(feature = "serde", serde(tag = "type"))]
+        #[doc = ""]
+        #[doc = "# Requirements"]
+        #[doc = ""]
+        #[doc = "This protocol requires `serde` to be available. Add it to your `Cargo.toml`:"]
+        #[doc = "```toml"]
+        #[doc = "[dependencies]"]
+        #[doc = "serde = { version = \"1.0\", features = [\"derive\"] }"]
+        #[doc = "```"]
+        #[derive(Debug, Clone, ::serde::Serialize, ::serde::Deserialize)]
+        #[serde(tag = "type")]
         pub enum #protocol_name {
             #(#variants),*,
             /// Unknown variant for forward compatibility.
             /// This allows older versions to deserialize messages from newer versions
             /// without failing, even if they don't recognize all variants.
-            #[cfg_attr(feature = "serde", serde(other))]
+            #[serde(other)]
             Unknown,
         }
 
@@ -586,7 +594,6 @@ pub fn generate_server_dispatcher(service: &ServiceDef) -> TokenStream {
         #[doc = ""]
         #[doc = "Implement this trait to provide the service functionality."]
         #[doc = "The dispatcher will route incoming RPC calls to these methods."]
-        #[async_trait::async_trait]
         pub trait #server_name: Send + Sync {
             #(#trait_methods)*
         }

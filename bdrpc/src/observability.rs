@@ -25,7 +25,7 @@
 //!
 //! - **[`HealthCheck`]**: Liveness and readiness probes for container orchestration
 //! - **[`ErrorMetrics`]**: Error tracking by category and layer
-//! - **[`TransportMetrics`]**: Connection lifecycle and data transfer metrics
+//! - **[`TransportMetrics`]**: Connection lifecycle and types transfer metrics
 //! - **[`ChannelMetrics`]**: Message flow and latency metrics
 //! - **[`CorrelationId`]**: Distributed tracing support
 //! - **[`ErrorObserver`]**: Custom error callbacks
@@ -137,7 +137,7 @@
 //!
 //! ## Transport Metrics
 //!
-//! Monitor connection lifecycle and data transfer:
+//! Monitor connection lifecycle and types transfer:
 //!
 //! ```rust
 //! use bdrpc::observability::TransportMetrics;
@@ -148,7 +148,7 @@
 //! metrics.record_connection_opened();
 //! assert_eq!(metrics.active_connections(), 1);
 //!
-//! // Track data transfer
+//! // Track types transfer
 //! metrics.record_bytes_sent(1024);
 //! metrics.record_bytes_received(512);
 //! assert_eq!(metrics.total_bytes_sent(), 1024);

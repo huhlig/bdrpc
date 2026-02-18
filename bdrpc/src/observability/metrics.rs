@@ -26,7 +26,7 @@ use std::time::Duration;
 
 /// Metrics for transport layer operations.
 ///
-/// Tracks connection lifecycle, data transfer, and transport-level errors.
+/// Tracks connection lifecycle, types transfer, and transport-level errors.
 ///
 /// # Examples
 ///

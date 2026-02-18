@@ -1401,7 +1401,7 @@ cargo run --example websocket_client --features websocket
 const ws = new WebSocket('ws://localhost:8080');
 ws.binaryType = 'arraybuffer';
 ws.onopen = () => ws.send(new TextEncoder().encode('Hello!'));
-ws.onmessage = (e) => console.log(new TextDecoder().decode(e.data));
+ws.onmessage = (e) => console.log(new TextDecoder().decode(e.types));
 ```
 
 **Next Steps:**
