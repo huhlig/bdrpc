@@ -366,6 +366,7 @@ pub fn generate_protocol_enum(service: &ServiceDef) -> TokenStream {
 /// Generate the client stub for a service.
 ///
 /// Creates a struct that implements the service trait and sends RPC calls.
+/// Uses request-response correlation for concurrent RPC support.
 pub fn generate_client_stub(service: &ServiceDef) -> TokenStream {
     let client_name = format_ident!("{}Client", service.name);
     let service_name = &service.name;
@@ -383,12 +384,18 @@ pub fn generate_client_stub(service: &ServiceDef) -> TokenStream {
         #[doc = ""]
         #[doc = "This struct provides methods to make RPC calls to a remote service."]
         #[doc = "It handles serialization, transport, and deserialization automatically."]
-        #[derive(Debug, Clone)]
+        #[doc = ""]
+        #[doc = "# Concurrency"]
+        #[doc = ""]
+        #[doc = "This client supports concurrent RPC calls using request-response correlation."]
+        #[doc = "Multiple requests can be in-flight simultaneously without blocking each other."]
         pub struct #client_name {
             /// Channel sender for sending requests to the remote service.
             sender: ::bdrpc::channel::ChannelSender<#protocol_name>,
-            /// Channel receiver for receiving responses from the remote service.
-            receiver: std::sync::Arc<tokio::sync::Mutex<::bdrpc::channel::ChannelReceiver<#protocol_name>>>,
+            /// Pending requests tracker for correlation.
+            pending: std::sync::Arc<::bdrpc::channel::PendingRequests<#protocol_name>>,
+            /// Response router task handle.
+            _response_router: std::sync::Arc<tokio::task::JoinHandle<()>>,
         }
 
         impl #client_name {
@@ -412,11 +419,26 @@ pub fn generate_client_stub(service: &ServiceDef) -> TokenStream {
             /// ```
             pub fn new(
                 sender: ::bdrpc::channel::ChannelSender<#protocol_name>,
-                receiver: ::bdrpc::channel::ChannelReceiver<#protocol_name>,
+                mut receiver: ::bdrpc::channel::ChannelReceiver<#protocol_name>,
             ) -> Self {
+                let pending = std::sync::Arc::new(::bdrpc::channel::PendingRequests::new());
+                let pending_clone = pending.clone();
+
+                // Spawn response router task to route responses to pending requests
+                let response_router = tokio::spawn(async move {
+                    while let Some(envelope) = receiver.recv_envelope().await {
+                        if let Some(correlation_id) = envelope.correlation_id {
+                            if !envelope.payload.is_request() {
+                                pending_clone.complete(correlation_id, envelope.payload).await;
+                            }
+                        }
+                    }
+                });
+
                 Self {
                     sender,
-                    receiver: std::sync::Arc::new(tokio::sync::Mutex::new(receiver)),
+                    pending,
+                    _response_router: std::sync::Arc::new(response_router),
                 }
             }
 
@@ -452,14 +474,15 @@ fn generate_client_method(method: &MethodDef, protocol_name: &Ident) -> TokenStr
     quote! {
         #[doc = concat!("Call the `", stringify!(#method_name), "` method on the remote service")]
         #[doc = ""]
-        #[doc = "Sends a request to the remote service and waits for the response."]
+        #[doc = "Sends a request to the remote service and waits for the correlated response."]
+        #[doc = "This method supports concurrent calls - multiple requests can be in-flight simultaneously."]
         #[doc = ""]
         #[doc = "# Errors"]
         #[doc = ""]
         #[doc = "Returns an error if:"]
         #[doc = "- The channel is closed"]
         #[doc = "- Sending the request fails"]
-        #[doc = "- Receiving the response fails"]
+        #[doc = "- The request times out (30 seconds)"]
         #[doc = "- The response is not the expected variant"]
         pub async fn #method_name(&self, #(#params),*) -> Result<#return_type, ::bdrpc::channel::ChannelError> {
             // Create the request message
@@ -467,16 +490,30 @@ fn generate_client_method(method: &MethodDef, protocol_name: &Ident) -> TokenStr
                 #(#param_names),*
             };
 
-            // Send the request through the channel
-            self.sender.send(request).await?;
+            // Send request with correlation ID and register for response
+            let correlation_id = self.sender.send_request(request).await?;
+            let response_rx = self.pending.register(correlation_id).await;
 
-            // Wait for the response
-            let mut receiver = self.receiver.lock().await;
-            let response = receiver.recv().await.ok_or_else(|| {
-                ::bdrpc::channel::ChannelError::Closed {
+            // Wait for correlated response with timeout
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                response_rx
+            ).await
+                .map_err(|_| {
+                    // Cancel the pending request on timeout
+                    let pending = self.pending.clone();
+                    let cid = correlation_id;
+                    tokio::spawn(async move {
+                        pending.cancel(cid).await;
+                    });
+                    ::bdrpc::channel::ChannelError::Timeout {
+                        channel_id: self.sender.id(),
+                        operation: stringify!(#method_name).to_string(),
+                    }
+                })?
+                .map_err(|_| ::bdrpc::channel::ChannelError::Closed {
                     channel_id: self.sender.id(),
-                }
-            })?;
+                })?;
 
             // Extract the result from the response variant
             match response {
@@ -496,6 +533,7 @@ fn generate_client_method(method: &MethodDef, protocol_name: &Ident) -> TokenStr
 /// Generate the server dispatcher for a service.
 ///
 /// Creates a trait and dispatcher that routes incoming messages to trait methods.
+/// Preserves correlation IDs from requests in responses for proper RPC correlation.
 pub fn generate_server_dispatcher(service: &ServiceDef) -> TokenStream {
     let server_name = format_ident!("{}Server", service.name);
     let dispatcher_name = format_ident!("{}Dispatcher", service.name);
@@ -555,6 +593,7 @@ pub fn generate_server_dispatcher(service: &ServiceDef) -> TokenStream {
         #[doc = concat!("Dispatcher for the `", stringify!(#service_name), "` service")]
         #[doc = ""]
         #[doc = "Routes incoming protocol messages to the appropriate service methods."]
+        #[doc = "Preserves correlation IDs from requests in responses for proper RPC correlation."]
         pub struct #dispatcher_name<T: #server_name> {
             service: std::sync::Arc<T>,
         }
@@ -567,18 +606,53 @@ pub fn generate_server_dispatcher(service: &ServiceDef) -> TokenStream {
                 }
             }
 
-            /// Dispatch an incoming message to the appropriate handler.
+            /// Dispatch an incoming envelope to the appropriate handler.
+            ///
+            /// Preserves the correlation ID from the request in the response.
             ///
             /// # Errors
             ///
             /// Returns an error response if the service method fails.
-            pub async fn dispatch(&self, message: #protocol_name) -> #protocol_name {
-                match message {
+            pub async fn dispatch_envelope(
+                &self,
+                envelope: ::bdrpc::channel::Envelope<#protocol_name>
+            ) -> ::bdrpc::channel::Envelope<#protocol_name> {
+                let correlation_id = envelope.correlation_id;
+                let channel_id = envelope.channel_id;
+                let sequence = envelope.sequence;
+
+                let response_payload = match envelope.payload {
                     #(#dispatch_arms)*
                     // Response variants and Unknown should not be dispatched
                     // They are handled by the client side
                     other => other,
+                };
+
+                ::bdrpc::channel::Envelope {
+                    channel_id,
+                    sequence,
+                    correlation_id,
+                    payload: response_payload,
                 }
+            }
+
+            /// Dispatch an incoming message to the appropriate handler.
+            ///
+            /// This is a convenience method that wraps the message in an envelope.
+            /// For proper correlation support, use `dispatch_envelope` instead.
+            ///
+            /// # Errors
+            ///
+            /// Returns an error response if the service method fails.
+            #[deprecated(since = "0.3.0", note = "Use dispatch_envelope for proper correlation support")]
+            pub async fn dispatch(&self, message: #protocol_name) -> #protocol_name {
+                let envelope = ::bdrpc::channel::Envelope {
+                    channel_id: ::bdrpc::channel::ChannelId::from(0),
+                    sequence: 0,
+                    correlation_id: None,
+                    payload: message,
+                };
+                self.dispatch_envelope(envelope).await.payload
             }
         }
     }

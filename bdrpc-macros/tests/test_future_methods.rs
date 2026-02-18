@@ -105,9 +105,16 @@ async fn test_mixed_service_implementation() {
     // Spawn server task
     let server_handle = tokio::spawn(async move {
         let mut receiver = server_receiver;
-        while let Some(request) = receiver.recv().await {
-            let response = dispatcher.dispatch(request).await;
-            if server_sender.send(response).await.is_err() {
+        while let Some(envelope) = receiver.recv_envelope().await {
+            let response_envelope = dispatcher.dispatch_envelope(envelope).await;
+            if server_sender
+                .send_response(
+                    response_envelope.payload,
+                    response_envelope.correlation_id.unwrap_or(0),
+                )
+                .await
+                .is_err()
+            {
                 break;
             }
         }
@@ -162,9 +169,16 @@ async fn test_all_future_service_implementation() {
 
     let server_handle = tokio::spawn(async move {
         let mut receiver = server_receiver;
-        while let Some(request) = receiver.recv().await {
-            let response = dispatcher.dispatch(request).await;
-            if server_sender.send(response).await.is_err() {
+        while let Some(envelope) = receiver.recv_envelope().await {
+            let response_envelope = dispatcher.dispatch_envelope(envelope).await;
+            if server_sender
+                .send_response(
+                    response_envelope.payload,
+                    response_envelope.correlation_id.unwrap_or(0),
+                )
+                .await
+                .is_err()
+            {
                 break;
             }
         }

@@ -776,7 +776,6 @@ impl<P: Protocol> ChannelSender<P> {
 
         Ok(())
     }
-
 }
 
 impl<P: Protocol> ChannelReceiver<P> {
