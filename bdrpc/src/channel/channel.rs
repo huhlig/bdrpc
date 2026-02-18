@@ -16,7 +16,7 @@
 
 //! Channel implementation for typed message passing.
 
-use super::{ChannelError, ChannelId, Envelope, Protocol};
+use super::{ChannelError, ChannelId, CorrelationIdGenerator, Envelope, Protocol};
 use crate::backpressure::{BackpressureStrategy, BoundedQueue};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -96,6 +96,7 @@ impl<P: Protocol> Channel<P> {
             recv_sequence: AtomicU64::new(0),
             backpressure,
             negotiated_features,
+            correlation_generator: CorrelationIdGenerator::new(),
         });
 
         let sender = ChannelSender {
@@ -167,6 +168,8 @@ struct ChannelState {
     backpressure: Arc<dyn BackpressureStrategy>,
     /// Features that were negotiated during handshake.
     negotiated_features: std::collections::HashSet<String>,
+    /// Correlation ID generator for RPC request-response matching.
+    correlation_generator: CorrelationIdGenerator,
 }
 
 impl<P: Protocol> Channel<P> {
@@ -601,6 +604,179 @@ impl<P: Protocol> ChannelSender<P> {
     pub fn is_closed(&self) -> bool {
         self.sender.is_closed()
     }
+
+    /// Sends a request message with correlation ID for RPC.
+    ///
+    /// This method is used for RPC-style communication where a response is expected.
+    /// It automatically generates a correlation ID that can be used to match the response.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChannelError::Closed`] if the receiver has been dropped.
+    /// Returns [`ChannelError::Internal`] if called with a non-request message.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use bdrpc::channel::{Channel, ChannelId, Protocol};
+    /// # #[derive(Debug, Clone)]
+    /// # enum MyProtocol { Request, Response }
+    /// # impl Protocol for MyProtocol {
+    /// #     fn method_name(&self) -> &'static str { "test" }
+    /// #     fn is_request(&self) -> bool { matches!(self, Self::Request) }
+    /// # }
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let (sender, _receiver) = Channel::<MyProtocol>::new_in_memory(ChannelId::new(), 100);
+    ///
+    /// // Send a request and get correlation ID
+    /// let correlation_id = sender.send_request(MyProtocol::Request).await?;
+    /// // Use correlation_id to match the response
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", instrument(skip(self, message), fields(channel_id = %self.id, sequence, correlation_id, method = message.method_name())))]
+    pub async fn send_request(&self, message: P) -> Result<u64, ChannelError> {
+        if !message.is_request() {
+            return Err(ChannelError::Internal {
+                message: "send_request called with non-request message".to_string(),
+            });
+        }
+
+        // Validate required features for this message
+        self.validate_features(&message)?;
+
+        // Check backpressure and wait if necessary
+        let queue_depth = self.sender.max_capacity() - self.sender.capacity();
+        if !self
+            .state
+            .backpressure
+            .should_send(&self.id, queue_depth)
+            .await
+        {
+            #[cfg(feature = "observability")]
+            debug!("Waiting for channel capacity");
+
+            self.state.backpressure.wait_for_capacity(&self.id).await;
+        }
+
+        // Generate correlation ID
+        let correlation_id = self.state.correlation_generator.next();
+
+        // Assign sequence number
+        let sequence = self.state.send_sequence.fetch_add(1, Ordering::SeqCst);
+
+        #[cfg(feature = "observability")]
+        {
+            tracing::Span::current().record("sequence", sequence);
+            tracing::Span::current().record("correlation_id", correlation_id);
+        }
+
+        // Wrap in envelope with correlation ID
+        let envelope = Envelope::new_with_correlation(self.id, sequence, correlation_id, message);
+
+        #[cfg(feature = "observability")]
+        debug!("Sending request message with correlation ID");
+
+        // Send through channel
+        self.sender.send(envelope).await.map_err(|_| {
+            #[cfg(feature = "observability")]
+            warn!("Channel closed, cannot send request");
+
+            ChannelError::Closed {
+                channel_id: self.id,
+            }
+        })?;
+
+        // Notify backpressure strategy
+        self.state.backpressure.on_message_sent(&self.id);
+
+        Ok(correlation_id)
+    }
+
+    /// Sends a response message with the correlation ID from the request.
+    ///
+    /// This method is used to send a response that corresponds to a specific request.
+    /// The correlation ID should be taken from the request envelope.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChannelError::Closed`] if the receiver has been dropped.
+    /// Returns [`ChannelError::Internal`] if called with a request message.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use bdrpc::channel::{Channel, ChannelId, Protocol};
+    /// # #[derive(Debug, Clone)]
+    /// # enum MyProtocol { Request, Response }
+    /// # impl Protocol for MyProtocol {
+    /// #     fn method_name(&self) -> &'static str { "test" }
+    /// #     fn is_request(&self) -> bool { matches!(self, Self::Request) }
+    /// # }
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let (sender, _receiver) = Channel::<MyProtocol>::new_in_memory(ChannelId::new(), 100);
+    ///
+    /// // Send a response with correlation ID from request
+    /// sender.send_response(MyProtocol::Response, 42).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", instrument(skip(self, message), fields(channel_id = %self.id, sequence, correlation_id, method = message.method_name())))]
+    pub async fn send_response(&self, message: P, correlation_id: u64) -> Result<(), ChannelError> {
+        if message.is_request() {
+            return Err(ChannelError::Internal {
+                message: "send_response called with request message".to_string(),
+            });
+        }
+
+        // Validate required features for this message
+        self.validate_features(&message)?;
+
+        // Check backpressure and wait if necessary
+        let queue_depth = self.sender.max_capacity() - self.sender.capacity();
+        if !self
+            .state
+            .backpressure
+            .should_send(&self.id, queue_depth)
+            .await
+        {
+            #[cfg(feature = "observability")]
+            debug!("Waiting for channel capacity");
+
+            self.state.backpressure.wait_for_capacity(&self.id).await;
+        }
+
+        // Assign sequence number
+        let sequence = self.state.send_sequence.fetch_add(1, Ordering::SeqCst);
+
+        #[cfg(feature = "observability")]
+        {
+            tracing::Span::current().record("sequence", sequence);
+            tracing::Span::current().record("correlation_id", correlation_id);
+        }
+
+        // Wrap in envelope with correlation ID
+        let envelope = Envelope::new_with_correlation(self.id, sequence, correlation_id, message);
+
+        #[cfg(feature = "observability")]
+        debug!("Sending response message with correlation ID");
+
+        // Send through channel
+        self.sender.send(envelope).await.map_err(|_| {
+            #[cfg(feature = "observability")]
+            warn!("Channel closed, cannot send response");
+
+            ChannelError::Closed {
+                channel_id: self.id,
+            }
+        })?;
+
+        // Notify backpressure strategy
+        self.state.backpressure.on_message_sent(&self.id);
+
+        Ok(())
+    }
+
 }
 
 impl<P: Protocol> ChannelReceiver<P> {
@@ -816,6 +992,73 @@ impl<P: Protocol> ChannelReceiver<P> {
         self.state.backpressure.on_message_received(&self.id);
 
         Some(envelope.into_payload())
+    }
+    /// Receives a message envelope from the channel.
+    ///
+    /// This is similar to [`recv`](Self::recv) but returns the full envelope
+    /// including metadata like correlation ID. This is useful for RPC implementations
+    /// that need to match responses to requests.
+    ///
+    /// Returns `None` if the sender has been dropped and no more messages
+    /// are available.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use bdrpc::channel::{Channel, ChannelId, Protocol};
+    /// # #[derive(Debug, Clone)]
+    /// # enum MyProtocol { Request, Response }
+    /// # impl Protocol for MyProtocol {
+    /// #     fn method_name(&self) -> &'static str { "test" }
+    /// #     fn is_request(&self) -> bool { matches!(self, Self::Request) }
+    /// # }
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let (_sender, mut receiver) = Channel::<MyProtocol>::new_in_memory(ChannelId::new(), 100);
+    /// if let Some(envelope) = receiver.recv_envelope().await {
+    ///     println!("Correlation ID: {:?}", envelope.correlation_id);
+    ///     println!("Message: {:?}", envelope.payload);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", instrument(skip(self), fields(channel_id = %self.id, sequence, correlation_id)))]
+    pub async fn recv_envelope(&mut self) -> Option<Envelope<P>> {
+        #[cfg(feature = "observability")]
+        debug!("Waiting for envelope on channel");
+
+        let envelope = self.receiver.recv().await?;
+
+        #[cfg(feature = "observability")]
+        {
+            tracing::Span::current().record("sequence", envelope.sequence);
+            if let Some(corr_id) = envelope.correlation_id {
+                tracing::Span::current().record("correlation_id", corr_id);
+            }
+            debug!("Received envelope on channel");
+        }
+
+        // Verify sequence number in debug builds
+        #[cfg(debug_assertions)]
+        {
+            let expected = self.state.recv_sequence.fetch_add(1, Ordering::SeqCst);
+            if envelope.sequence != expected {
+                panic!(
+                    "Message reordering detected on channel {}! Expected sequence {}, got {}",
+                    self.id, expected, envelope.sequence
+                );
+            }
+        }
+
+        // In release builds, just update the counter
+        #[cfg(not(debug_assertions))]
+        {
+            self.state.recv_sequence.fetch_add(1, Ordering::SeqCst);
+        }
+
+        // Notify backpressure strategy that capacity is available
+        self.state.backpressure.on_message_received(&self.id);
+
+        Some(envelope)
     }
 
     /// Closes the receiving half of the channel.

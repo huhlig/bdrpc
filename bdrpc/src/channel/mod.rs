@@ -268,17 +268,23 @@
 
 #[allow(clippy::module_inception)]
 mod channel;
+mod correlation;
 mod envelope;
 mod error;
 mod id;
 mod manager;
+mod pending;
+mod rpc;
 mod system;
 
 pub use channel::{Channel, ChannelReceiver, ChannelSender};
+pub use correlation::CorrelationIdGenerator;
 pub use envelope::Envelope;
 pub use error::ChannelError;
 pub use id::ChannelId;
 pub use manager::ChannelManager;
+pub use pending::PendingRequests;
+pub use rpc::RpcChannel;
 pub use system::{SYSTEM_CHANNEL_ID, SystemProtocol};
 
 /// Protocol trait that all generated protocol enums must implement.

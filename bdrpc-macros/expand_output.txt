@@ -1,0 +1,555 @@
+    Checking tokio v1.49.0
+    Checking bdrpc v0.1.0 (E:\Dropbox\Projects\bdrpc\bdrpc)
+warning: error finalizing incremental compilation session directory `\\?\E:\Dropbox\Projects\bdrpc\target\debug\incremental\bdrpc-0e7rg7xdy2qlr\s-hfwlc4czmi-1ls0bxn-working`: The process cannot access the file because it is being used by another process. (os error 32)
+    Checking bdrpc-macros v0.1.0 (E:\Dropbox\Projects\bdrpc\bdrpc-macros)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.71s
+
+#![feature(prelude_import)]
+//! Tests for macro expansion.
+//!
+//! These tests verify that the `#[bdrpc::service]` macro generates the expected code.
+#[macro_use]
+extern crate std;
+#[prelude_import]
+use std::prelude::rust_2024::*;
+use bdrpc::service;
+/// A simple calculator service for testing.
+#[allow(dead_code)]
+trait Calculator {
+    async fn add(&self, a: i32, b: i32) -> Result<i32, String>;
+    async fn subtract(&self, a: i32, b: i32) -> Result<i32, String>;
+}
+/// Deprecation information for a method.
+pub struct CalculatorDeprecationInfo {
+    /// Version when deprecated
+    pub since: &'static str,
+    /// Deprecation note/message
+    pub note: Option<&'static str>,
+    /// Version when it will be removed
+    pub remove_in: Option<&'static str>,
+}
+#[automatically_derived]
+impl ::core::fmt::Debug for CalculatorDeprecationInfo {
+    #[inline]
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+        ::core::fmt::Formatter::debug_struct_field3_finish(
+            f,
+            "CalculatorDeprecationInfo",
+            "since",
+            &self.since,
+            "note",
+            &self.note,
+            "remove_in",
+            &&self.remove_in,
+        )
+    }
+}
+#[automatically_derived]
+impl ::core::clone::Clone for CalculatorDeprecationInfo {
+    #[inline]
+    fn clone(&self) -> CalculatorDeprecationInfo {
+        CalculatorDeprecationInfo {
+            since: ::core::clone::Clone::clone(&self.since),
+            note: ::core::clone::Clone::clone(&self.note),
+            remove_in: ::core::clone::Clone::clone(&self.remove_in),
+        }
+    }
+}
+///Protocol enum for the `Calculator` service
+///
+///Direction: Bidirectional
+///Version: 1
+///Min Version: 1
+///
+///This enum contains request and response variants for each method in the service.
+///It is used for serialization and deserialization of RPC messages.
+pub enum CalculatorProtocol {
+    ///Request to call `add` method
+    AddRequest { a: i32, b: i32 },
+    ///Response from `add` method
+    AddResponse { result: Result<i32, String> },
+    ///Request to call `subtract` method
+    SubtractRequest { a: i32, b: i32 },
+    ///Response from `subtract` method
+    SubtractResponse { result: Result<i32, String> },
+    /// Unknown variant for forward compatibility.
+    /// This allows older versions to deserialize messages from newer versions
+    /// without failing, even if they don't recognize all variants.
+    Unknown,
+}
+#[automatically_derived]
+impl ::core::fmt::Debug for CalculatorProtocol {
+    #[inline]
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+        match self {
+            CalculatorProtocol::AddRequest { a: __self_0, b: __self_1 } => {
+                ::core::fmt::Formatter::debug_struct_field2_finish(
+                    f,
+                    "AddRequest",
+                    "a",
+                    __self_0,
+                    "b",
+                    &__self_1,
+                )
+            }
+            CalculatorProtocol::AddResponse { result: __self_0 } => {
+                ::core::fmt::Formatter::debug_struct_field1_finish(
+                    f,
+                    "AddResponse",
+                    "result",
+                    &__self_0,
+                )
+            }
+            CalculatorProtocol::SubtractRequest { a: __self_0, b: __self_1 } => {
+                ::core::fmt::Formatter::debug_struct_field2_finish(
+                    f,
+                    "SubtractRequest",
+                    "a",
+                    __self_0,
+                    "b",
+                    &__self_1,
+                )
+            }
+            CalculatorProtocol::SubtractResponse { result: __self_0 } => {
+                ::core::fmt::Formatter::debug_struct_field1_finish(
+                    f,
+                    "SubtractResponse",
+                    "result",
+                    &__self_0,
+                )
+            }
+            CalculatorProtocol::Unknown => {
+                ::core::fmt::Formatter::write_str(f, "Unknown")
+            }
+        }
+    }
+}
+#[automatically_derived]
+impl ::core::clone::Clone for CalculatorProtocol {
+    #[inline]
+    fn clone(&self) -> CalculatorProtocol {
+        match self {
+            CalculatorProtocol::AddRequest { a: __self_0, b: __self_1 } => {
+                CalculatorProtocol::AddRequest {
+                    a: ::core::clone::Clone::clone(__self_0),
+                    b: ::core::clone::Clone::clone(__self_1),
+                }
+            }
+            CalculatorProtocol::AddResponse { result: __self_0 } => {
+                CalculatorProtocol::AddResponse {
+                    result: ::core::clone::Clone::clone(__self_0),
+                }
+            }
+            CalculatorProtocol::SubtractRequest { a: __self_0, b: __self_1 } => {
+                CalculatorProtocol::SubtractRequest {
+                    a: ::core::clone::Clone::clone(__self_0),
+                    b: ::core::clone::Clone::clone(__self_1),
+                }
+            }
+            CalculatorProtocol::SubtractResponse { result: __self_0 } => {
+                CalculatorProtocol::SubtractResponse {
+                    result: ::core::clone::Clone::clone(__self_0),
+                }
+            }
+            CalculatorProtocol::Unknown => CalculatorProtocol::Unknown,
+        }
+    }
+}
+impl CalculatorProtocol {
+    /// Current protocol version.
+    pub const VERSION: u32 = 1u32;
+    /// Minimum supported protocol version.
+    pub const MIN_SUPPORTED_VERSION: u32 = 1u32;
+    /// Optional features supported by this protocol.
+    pub const FEATURES: &'static [&'static str] = &[];
+    /// Returns the name of the method this message is for.
+    /// Returns "unknown" for unrecognized variants.
+    pub fn method_name(&self) -> &'static str {
+        match self {
+            Self::AddRequest { .. } => "AddRequest",
+            Self::AddResponse { .. } => "AddResponse",
+            Self::SubtractRequest { .. } => "SubtractRequest",
+            Self::SubtractResponse { .. } => "SubtractResponse",
+            Self::Unknown => "unknown",
+        }
+    }
+    /// Returns true if this is a request message.
+    pub fn is_request(&self) -> bool {
+        match self {
+            Self::AddRequest { .. } => true,
+            Self::SubtractRequest { .. } => true,
+            _ => false,
+        }
+    }
+    /// Returns true if this is a response message.
+    pub fn is_response(&self) -> bool {
+        !self.is_request() && !self.is_unknown()
+    }
+    /// Returns true if this is an unknown/unrecognized variant.
+    /// This can happen when deserializing messages from a newer protocol version.
+    pub fn is_unknown(&self) -> bool {
+        #[allow(non_exhaustive_omitted_patterns)]
+        match self {
+            Self::Unknown => true,
+            _ => false,
+        }
+    }
+    /// Returns the version when a method was introduced.
+    /// Returns None if the method name is not recognized.
+    pub fn method_version(method: &str) -> Option<u32> {
+        match method {
+            "add" => Some(1u32),
+            "subtract" => Some(1u32),
+            _ => None,
+        }
+    }
+    /// Returns deprecation information for a method, if deprecated.
+    pub fn deprecation_info(method: &str) -> Option<CalculatorDeprecationInfo> {
+        match method {
+            _ => None,
+        }
+    }
+    /// Returns the features required by a method (static lookup by name).
+    pub fn required_features(method: &str) -> &'static [&'static str] {
+        match method {
+            _ => &[],
+        }
+    }
+}
+impl bdrpc::channel::Protocol for CalculatorProtocol {
+    fn method_name(&self) -> &'static str {
+        self.method_name()
+    }
+    fn is_request(&self) -> bool {
+        self.is_request()
+    }
+    fn required_features(&self) -> &'static [&'static str] {
+        match self {
+            _ => &[],
+        }
+    }
+}
+///Client stub for the `Calculator` service
+///
+///This struct provides methods to make RPC calls to a remote service.
+///It handles serialization, transport, and deserialization automatically.
+pub struct CalculatorClient {
+    /// Channel sender for sending requests to the remote service.
+    sender: ::bdrpc::channel::ChannelSender<CalculatorProtocol>,
+    /// Channel receiver for receiving responses from the remote service.
+    receiver: std::sync::Arc<
+        tokio::sync::Mutex<::bdrpc::channel::ChannelReceiver<CalculatorProtocol>>,
+    >,
+}
+#[automatically_derived]
+impl ::core::fmt::Debug for CalculatorClient {
+    #[inline]
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+        ::core::fmt::Formatter::debug_struct_field2_finish(
+            f,
+            "CalculatorClient",
+            "sender",
+            &self.sender,
+            "receiver",
+            &&self.receiver,
+        )
+    }
+}
+#[automatically_derived]
+impl ::core::clone::Clone for CalculatorClient {
+    #[inline]
+    fn clone(&self) -> CalculatorClient {
+        CalculatorClient {
+            sender: ::core::clone::Clone::clone(&self.sender),
+            receiver: ::core::clone::Clone::clone(&self.receiver),
+        }
+    }
+}
+impl CalculatorClient {
+    /// Create a new client instance with the given channel.
+    ///
+    /// # Arguments
+    ///
+    /// * `sender` - Channel sender for sending requests
+    /// * `receiver` - Channel receiver for receiving responses
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use bdrpc::channel::Channel;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Create a channel pair (typically done via endpoint)
+    /// // let (sender, receiver) = endpoint.create_channel().await?;
+    /// // let client = MyServiceClient::new(sender, receiver);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(
+        sender: ::bdrpc::channel::ChannelSender<CalculatorProtocol>,
+        receiver: ::bdrpc::channel::ChannelReceiver<CalculatorProtocol>,
+    ) -> Self {
+        Self {
+            sender,
+            receiver: std::sync::Arc::new(tokio::sync::Mutex::new(receiver)),
+        }
+    }
+    ///Call the `add` method on the remote service
+    ///
+    ///Sends a request to the remote service and waits for the response.
+    ///
+    ///# Errors
+    ///
+    ///Returns an error if:
+    ///- The channel is closed
+    ///- Sending the request fails
+    ///- Receiving the response fails
+    ///- The response is not the expected variant
+    pub async fn add(
+        &self,
+        a: i32,
+        b: i32,
+    ) -> Result<Result<i32, String>, ::bdrpc::channel::ChannelError> {
+        let request = CalculatorProtocol::AddRequest {
+            a,
+            b,
+        };
+        self.sender.send(request).await?;
+        let mut receiver = self.receiver.lock().await;
+        let response = receiver
+            .recv()
+            .await
+            .ok_or_else(|| {
+                ::bdrpc::channel::ChannelError::Closed {
+                    channel_id: self.sender.id(),
+                }
+            })?;
+        match response {
+            CalculatorProtocol::AddResponse { result } => Ok(result),
+            _ => {
+                Err(::bdrpc::channel::ChannelError::Internal {
+                    message: ::alloc::__export::must_use({
+                        ::alloc::fmt::format(
+                            format_args!(
+                                "Protocol violation on channel {0}: Expected {1} response, got different variant",
+                                self.sender.id(),
+                                "AddResponse",
+                            ),
+                        )
+                    }),
+                })
+            }
+        }
+    }
+    ///Call the `subtract` method on the remote service
+    ///
+    ///Sends a request to the remote service and waits for the response.
+    ///
+    ///# Errors
+    ///
+    ///Returns an error if:
+    ///- The channel is closed
+    ///- Sending the request fails
+    ///- Receiving the response fails
+    ///- The response is not the expected variant
+    pub async fn subtract(
+        &self,
+        a: i32,
+        b: i32,
+    ) -> Result<Result<i32, String>, ::bdrpc::channel::ChannelError> {
+        let request = CalculatorProtocol::SubtractRequest {
+            a,
+            b,
+        };
+        self.sender.send(request).await?;
+        let mut receiver = self.receiver.lock().await;
+        let response = receiver
+            .recv()
+            .await
+            .ok_or_else(|| {
+                ::bdrpc::channel::ChannelError::Closed {
+                    channel_id: self.sender.id(),
+                }
+            })?;
+        match response {
+            CalculatorProtocol::SubtractResponse { result } => Ok(result),
+            _ => {
+                Err(::bdrpc::channel::ChannelError::Internal {
+                    message: ::alloc::__export::must_use({
+                        ::alloc::fmt::format(
+                            format_args!(
+                                "Protocol violation on channel {0}: Expected {1} response, got different variant",
+                                self.sender.id(),
+                                "SubtractResponse",
+                            ),
+                        )
+                    }),
+                })
+            }
+        }
+    }
+}
+///Server trait for the `Calculator` service
+///
+///Implement this trait to provide the service functionality.
+///The dispatcher will route incoming RPC calls to these methods.
+pub trait CalculatorServer: Send + Sync {
+    #[must_use]
+    #[allow(
+        elided_named_lifetimes,
+        clippy::type_complexity,
+        clippy::type_repetition_in_bounds
+    )]
+    fn add<'life0, 'async_trait>(
+        &'life0 self,
+        a: i32,
+        b: i32,
+    ) -> ::core::pin::Pin<
+        Box<
+            dyn ::core::future::Future<
+                Output = Result<i32, String>,
+            > + ::core::marker::Send + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait;
+    #[must_use]
+    #[allow(
+        elided_named_lifetimes,
+        clippy::type_complexity,
+        clippy::type_repetition_in_bounds
+    )]
+    fn subtract<'life0, 'async_trait>(
+        &'life0 self,
+        a: i32,
+        b: i32,
+    ) -> ::core::pin::Pin<
+        Box<
+            dyn ::core::future::Future<
+                Output = Result<i32, String>,
+            > + ::core::marker::Send + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait;
+}
+///Dispatcher for the `Calculator` service
+///
+///Routes incoming protocol messages to the appropriate service methods.
+pub struct CalculatorDispatcher<T: CalculatorServer> {
+    service: std::sync::Arc<T>,
+}
+impl<T: CalculatorServer> CalculatorDispatcher<T> {
+    /// Create a new dispatcher with the given service implementation.
+    pub fn new(service: T) -> Self {
+        Self {
+            service: std::sync::Arc::new(service),
+        }
+    }
+    /// Dispatch an incoming message to the appropriate handler.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error response if the service method fails.
+    pub async fn dispatch(&self, message: CalculatorProtocol) -> CalculatorProtocol {
+        match message {
+            CalculatorProtocol::AddRequest { a, b } => {
+                let result = self.service.add(a, b).await;
+                CalculatorProtocol::AddResponse {
+                    result,
+                }
+            }
+            CalculatorProtocol::SubtractRequest { a, b } => {
+                let result = self.service.subtract(a, b).await;
+                CalculatorProtocol::SubtractResponse {
+                    result,
+                }
+            }
+            other => other,
+        }
+    }
+}
+extern crate test;
+#[rustc_test_marker = "test_protocol_enum_generated"]
+#[doc(hidden)]
+pub const test_protocol_enum_generated: test::TestDescAndFn = test::TestDescAndFn {
+    desc: test::TestDesc {
+        name: test::StaticTestName("test_protocol_enum_generated"),
+        ignore: false,
+        ignore_message: ::core::option::Option::None,
+        source_file: "bdrpc-macros\\tests\\expand.rs",
+        start_line: 16usize,
+        start_col: 4usize,
+        end_line: 16usize,
+        end_col: 32usize,
+        compile_fail: false,
+        no_run: false,
+        should_panic: test::ShouldPanic::No,
+        test_type: test::TestType::IntegrationTest,
+    },
+    testfn: test::StaticTestFn(
+        #[coverage(off)]
+        || test::assert_test_result(test_protocol_enum_generated()),
+    ),
+};
+fn test_protocol_enum_generated() {
+    let _request = CalculatorProtocol::AddRequest {
+        a: 1,
+        b: 2,
+    };
+    let _response = CalculatorProtocol::AddResponse {
+        result: Ok(3),
+    };
+}
+extern crate test;
+#[rustc_test_marker = "test_protocol_methods"]
+#[doc(hidden)]
+pub const test_protocol_methods: test::TestDescAndFn = test::TestDescAndFn {
+    desc: test::TestDesc {
+        name: test::StaticTestName("test_protocol_methods"),
+        ignore: false,
+        ignore_message: ::core::option::Option::None,
+        source_file: "bdrpc-macros\\tests\\expand.rs",
+        start_line: 23usize,
+        start_col: 4usize,
+        end_line: 23usize,
+        end_col: 25usize,
+        compile_fail: false,
+        no_run: false,
+        should_panic: test::ShouldPanic::No,
+        test_type: test::TestType::IntegrationTest,
+    },
+    testfn: test::StaticTestFn(
+        #[coverage(off)]
+        || test::assert_test_result(test_protocol_methods()),
+    ),
+};
+fn test_protocol_methods() {
+    let request = CalculatorProtocol::AddRequest {
+        a: 1,
+        b: 2,
+    };
+    if !request.is_request() {
+        ::core::panicking::panic("assertion failed: request.is_request()")
+    }
+    if !!request.is_response() {
+        ::core::panicking::panic("assertion failed: !request.is_response()")
+    }
+    let response = CalculatorProtocol::AddResponse {
+        result: Ok(3),
+    };
+    if !!response.is_request() {
+        ::core::panicking::panic("assertion failed: !response.is_request()")
+    }
+    if !response.is_response() {
+        ::core::panicking::panic("assertion failed: response.is_response()")
+    }
+}
+#[rustc_main]
+#[coverage(off)]
+#[doc(hidden)]
+pub fn main() -> () {
+    extern crate test;
+    test::test_main_static(&[&test_protocol_enum_generated, &test_protocol_methods])
+}

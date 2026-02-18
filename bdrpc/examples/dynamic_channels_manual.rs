@@ -551,7 +551,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("🔗 Related Concepts:\n");
     println!("   • HTTP/2 Multiplexing: Similar concept for HTTP");
     println!("   • QUIC Streams: Multiple streams over one connection");
-    println!("   • gRPC Multiplexing: Multiple RPCs over one connection");
+    println!("   • RPC Multiplexing: Multiple RPCs over one connection");
     println!("   • AMQP Channels: Multiple channels over one TCP connection\n");
 
     println!("📖 Next Steps:\n");
