@@ -608,7 +608,21 @@ impl<P: Protocol> ChannelSender<P> {
     /// Sends a request message with correlation ID for RPC.
     ///
     /// This method is used for RPC-style communication where a response is expected.
-    /// It automatically generates a correlation ID that can be used to match the response.
+    /// It automatically generates a unique correlation ID that can be used to match
+    /// the response, enabling concurrent RPC calls without race conditions.
+    ///
+    /// # Concurrent RPC Support
+    ///
+    /// Multiple requests can be in-flight simultaneously. Each request gets a unique
+    /// correlation ID, and responses are matched back to their requests even if they
+    /// arrive out-of-order. This enables true concurrent RPC with significant
+    /// performance improvements for I/O-bound operations.
+    ///
+    /// # Sequence Validation
+    ///
+    /// When correlation IDs are present, sequence number validation is skipped to
+    /// allow out-of-order responses. This is safe because correlation IDs provide
+    /// explicit request-response matching.
     ///
     /// # Errors
     ///
@@ -631,6 +645,13 @@ impl<P: Protocol> ChannelSender<P> {
     /// // Send a request and get correlation ID
     /// let correlation_id = sender.send_request(MyProtocol::Request).await?;
     /// // Use correlation_id to match the response
+    ///
+    /// // Multiple concurrent requests are supported
+    /// let (id1, id2, id3) = tokio::join!(
+    ///     sender.send_request(MyProtocol::Request),
+    ///     sender.send_request(MyProtocol::Request),
+    ///     sender.send_request(MyProtocol::Request),
+    /// );
     /// # Ok(())
     /// # }
     /// ```
@@ -696,7 +717,20 @@ impl<P: Protocol> ChannelSender<P> {
     /// Sends a response message with the correlation ID from the request.
     ///
     /// This method is used to send a response that corresponds to a specific request.
-    /// The correlation ID should be taken from the request envelope.
+    /// The correlation ID should be taken from the request envelope to ensure the
+    /// response is matched to the correct request.
+    ///
+    /// # Concurrent Response Handling
+    ///
+    /// Responses can be sent in any order, independent of the order requests were
+    /// received. The correlation ID ensures each response is matched to its
+    /// corresponding request, even when processing requests concurrently.
+    ///
+    /// # Sequence Validation
+    ///
+    /// When correlation IDs are present, sequence number validation is skipped on
+    /// the receiving end to allow out-of-order delivery. This is safe because
+    /// correlation IDs provide explicit request-response matching.
     ///
     /// # Errors
     ///
@@ -714,10 +748,15 @@ impl<P: Protocol> ChannelSender<P> {
     /// #     fn is_request(&self) -> bool { matches!(self, Self::Request) }
     /// # }
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let (sender, _receiver) = Channel::<MyProtocol>::new_in_memory(ChannelId::new(), 100);
+    /// let (sender, mut receiver) = Channel::<MyProtocol>::new_in_memory(ChannelId::new(), 100);
     ///
-    /// // Send a response with correlation ID from request
-    /// sender.send_response(MyProtocol::Response, 42).await?;
+    /// // Receive request and extract correlation ID
+    /// if let Some(envelope) = receiver.recv_envelope().await {
+    ///     let correlation_id = envelope.correlation_id.unwrap();
+    ///
+    ///     // Process request and send response with same correlation ID
+    ///     sender.send_response(MyProtocol::Response, correlation_id).await?;
+    /// }
     /// # Ok(())
     /// # }
     /// ```
@@ -995,8 +1034,23 @@ impl<P: Protocol> ChannelReceiver<P> {
     /// Receives a message envelope from the channel.
     ///
     /// This is similar to [`recv`](Self::recv) but returns the full envelope
-    /// including metadata like correlation ID. This is useful for RPC implementations
-    /// that need to match responses to requests.
+    /// including metadata like correlation ID and sequence number. This is essential
+    /// for RPC implementations that need to match responses to requests.
+    ///
+    /// # Sequence Validation
+    ///
+    /// In debug builds, this method validates sequence numbers to detect message
+    /// reordering bugs. However, validation is **skipped for correlated messages**
+    /// (where `correlation_id.is_some()`) because concurrent RPC responses are
+    /// explicitly designed to arrive out-of-order. The correlation ID provides
+    /// explicit request-response matching, making sequence validation unnecessary
+    /// and counterproductive for concurrent RPC.
+    ///
+    /// # Concurrent RPC Usage
+    ///
+    /// When using this method for RPC, responses may arrive out-of-order relative
+    /// to requests. Use the `correlation_id` field to match responses to their
+    /// corresponding requests. The generated client stubs handle this automatically.
     ///
     /// Returns `None` if the sender has been dropped and no more messages
     /// are available.
@@ -1013,8 +1067,13 @@ impl<P: Protocol> ChannelReceiver<P> {
     /// # }
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let (_sender, mut receiver) = Channel::<MyProtocol>::new_in_memory(ChannelId::new(), 100);
+    ///
+    /// // Receive envelope with correlation ID
     /// if let Some(envelope) = receiver.recv_envelope().await {
-    ///     println!("Correlation ID: {:?}", envelope.correlation_id);
+    ///     if let Some(correlation_id) = envelope.correlation_id {
+    ///         println!("RPC response with correlation ID: {}", correlation_id);
+    ///         // Match response to request using correlation_id
+    ///     }
     ///     println!("Message: {:?}", envelope.payload);
     /// }
     /// # Ok(())
