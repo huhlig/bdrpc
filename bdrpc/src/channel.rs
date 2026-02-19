@@ -267,6 +267,7 @@
 //! See the benchmarks in `benches/` for detailed performance metrics.
 
 #[allow(clippy::module_inception)]
+mod bridge;
 mod channel;
 mod correlation;
 mod envelope;
@@ -274,9 +275,11 @@ mod error;
 mod id;
 mod manager;
 mod pending;
+mod router;
 mod rpc;
 mod system;
 
+pub use bridge::ChannelBridge;
 pub use channel::{Channel, ChannelReceiver, ChannelSender};
 pub use correlation::CorrelationIdGenerator;
 pub use envelope::Envelope;
@@ -284,6 +287,7 @@ pub use error::ChannelError;
 pub use id::ChannelId;
 pub use manager::ChannelManager;
 pub use pending::PendingRequests;
+pub use router::TransportRouter;
 pub use rpc::RpcChannel;
 pub use system::{SYSTEM_CHANNEL_ID, SystemProtocol};
 

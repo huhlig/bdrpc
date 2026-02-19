@@ -1,6 +1,22 @@
+//
+// Copyright 2026 Hans W. Uhlig. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
 //! Reconnection strategies for handling connection failures.
 //!
-//! This module provides pluggable reconnection strategies that determine how
+//! This module provides pluggable strategy strategies that determine how
 //! an endpoint should behave when a connection fails. Different strategies
 //! are appropriate for different use cases.
 //!
@@ -15,8 +31,8 @@
 //!
 //! ## Using Exponential Backoff
 //!
-//! ```
-//! use bdrpc::reconnection::ExponentialBackoff;
+//! ```rust
+//! use bdrpc::strategy::ExponentialBackoff;
 //! use std::time::Duration;
 //!
 //! let strategy = ExponentialBackoff::builder()
@@ -30,8 +46,8 @@
 //!
 //! ## Using Fixed Delay
 //!
-//! ```
-//! use bdrpc::reconnection::FixedDelay;
+//! ```rust
+//! use bdrpc::strategy::FixedDelay;
 //! use std::time::Duration;
 //!
 //! let strategy = FixedDelay::new(Duration::from_secs(5));
@@ -40,7 +56,7 @@
 //! ## Using Circuit Breaker
 //!
 //! ```
-//! use bdrpc::reconnection::CircuitBreaker;
+//! use bdrpc::strategy::CircuitBreaker;
 //! use std::time::Duration;
 //!
 //! let strategy = CircuitBreaker::builder()
@@ -53,7 +69,7 @@
 //! ## Disabling Reconnection
 //!
 //! ```
-//! use bdrpc::reconnection::NoReconnect;
+//! use bdrpc::strategy::NoReconnect;
 //!
 //! let strategy = NoReconnect::new();
 //! ```

@@ -104,7 +104,7 @@ use std::time::Duration;
 
 let quic_config = QuicConfig {
     max_idle_timeout: Duration::from_secs(120),  // Longer timeout
-    enable_0rtt: true,                           // Fast reconnection
+    enable_0rtt: true,                           // Fast strategy
     enable_migration: true,                      // Mobile support
     ..Default::default()
 };
@@ -141,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // - IP address changes
     // - Network interface changes
     
-    // Your application code doesn't need to handle reconnection!
+    // Your application code doesn't need to handle strategy!
     loop {
         // Use channels normally
         // Connection migration is transparent
@@ -197,7 +197,7 @@ let config = QuicConfig {
     max_idle_timeout: Duration::from_secs(30),
     keep_alive_interval: Duration::from_secs(5),
     initial_window: 256 * 1024,  // Larger initial window
-    enable_0rtt: true,            // Fast reconnection
+    enable_0rtt: true,            // Fast strategy
     ..Default::default()
 };
 ```
@@ -381,7 +381,7 @@ impl TransportEventHandler for HealthMonitor {
         error: Option<TransportError>
     ) {
         println!("QUIC connection lost: {:?}", error);
-        // Implement reconnection logic if needed
+        // Implement strategy logic if needed
     }
 }
 ```

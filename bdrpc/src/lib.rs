@@ -15,6 +15,7 @@
 //
 
 #![doc = include_str!("../../README.md")]
+#![allow(clippy::module_inception)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![deny(unsafe_code)]
@@ -29,7 +30,7 @@
 //! - **Type-safe protocols**: Implement the [`Protocol`] trait for your message types
 //! - **Robust error handling**: Three-layer error hierarchy with recovery strategies
 //! - **Flow control**: Pluggable backpressure strategies
-//! - **Reconnection**: Configurable reconnection strategies with exponential backoff
+//! - **Reconnection**: Configurable strategy strategies with exponential backoff
 //! - **Protocol evolution**: Version negotiation and feature flags
 //! - **Observability**: Built-in metrics, tracing, and health checks
 //!
@@ -42,7 +43,7 @@
 //! - **[`channel`]**: Multiplexed, typed message passing
 //! - **[`endpoint`]**: High-level connection management and protocol negotiation
 //! - **[`backpressure`]**: Flow control strategies
-//! - **[`reconnection`]**: Automatic reconnection with configurable strategies
+//! - **[`strategy`]**: Automatic strategy with configurable strategies
 //! - **[`observability`]**: Metrics, tracing, and health monitoring
 //!
 //! ## Quick Start
@@ -267,7 +268,6 @@ pub mod channel;
 pub mod endpoint;
 pub mod error;
 pub mod observability;
-pub mod reconnection;
 pub mod serialization;
 pub mod transport;
 
@@ -280,7 +280,4 @@ pub use channel::{Channel, ChannelError, ChannelId, ChannelManager, Protocol};
 pub use endpoint::{Endpoint, EndpointBuilder, EndpointConfig, EndpointError, ProtocolDirection};
 pub use error::BdrpcError;
 pub use observability::{ChannelMetrics, ErrorMetrics, ErrorObserver, TransportMetrics, log_error};
-pub use reconnection::{
-    CircuitBreaker, ExponentialBackoff, FixedDelay, NoReconnect, ReconnectionStrategy,
-};
 pub use transport::{Transport, TransportError, TransportManager};

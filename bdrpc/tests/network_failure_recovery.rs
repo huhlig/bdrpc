@@ -21,9 +21,12 @@
 
 use bdrpc::channel::Protocol;
 use bdrpc::endpoint::{Endpoint, EndpointConfig};
-use bdrpc::reconnection::{ExponentialBackoff, ReconnectionStrategy};
 use bdrpc::serialization::JsonSerializer;
-use bdrpc::transport::{TcpTransport, Transport};
+use bdrpc::transport::{
+    Transport,
+    provider::TcpTransport,
+    strategy::{ExponentialBackoff, ReconnectionStrategy},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -196,7 +199,7 @@ async fn test_channel_creation_timeout() {
     drop(server_handle); // Cancel server task
 }
 
-/// Test reconnection after connection loss.
+/// Test strategy after connection loss.
 #[tokio::test]
 #[allow(deprecated)]
 async fn test_reconnection_after_connection_loss() {

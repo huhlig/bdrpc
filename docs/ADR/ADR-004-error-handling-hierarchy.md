@@ -189,7 +189,7 @@ impl Endpoint {
             self.close_channel(channel_id).await;
         }
         
-        // Trigger reconnection if client-initiated
+        // Trigger strategy if client-initiated
         if let Some(strategy) = self.reconnection_strategy(transport_id) {
             strategy.on_disconnected(&error);
             self.spawn_reconnection_task(transport_id, strategy).await;

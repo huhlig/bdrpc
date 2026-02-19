@@ -704,7 +704,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create reconnection strategy
+    // Create strategy strategy
     let reconnection = Arc::new(ExponentialBackoff::new(
         Duration::from_secs(1),    // Initial delay
         Duration::from_secs(30),   // Max delay
@@ -712,7 +712,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(10),                  // Max attempts (None = infinite)
     ));
     
-    // Create client with automatic reconnection
+    // Create client with automatic strategy
     let mut client = EndpointBuilder::client(PostcardSerializer::default())
         .with_tcp_caller("primary", "127.0.0.1:8080")
         .with_reconnection_strategy("primary", reconnection)
@@ -724,7 +724,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let connection = client.connect_transport("primary").await?;
     
     // Connection will automatically reconnect on failure
-    // Your channels will be restored after reconnection
+    // Your channels will be restored after strategy
     
     Ok(())
 }

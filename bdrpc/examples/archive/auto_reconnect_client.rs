@@ -21,7 +21,7 @@
 //! capabilities introduced in v0.2.0.
 //!
 //! # Features Demonstrated
-//! - Automatic reconnection with exponential backoff
+//! - Automatic strategy with exponential backoff
 //! - Named transport configuration
 //! - Connection state management
 //! - Graceful handling of connection failures
@@ -38,7 +38,7 @@
 //! cargo run --example auto_reconnect_client --features=tracing
 //! ```
 //!
-//! Try stopping and restarting the server to see automatic reconnection in action!
+//! Try stopping and restarting the server to see automatic strategy in action!
 
 use bdrpc::channel::Protocol;
 use bdrpc::endpoint::EndpointBuilder;
@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== Auto-Reconnecting Client Example ===\n");
 
-    // Create reconnection strategy with exponential backoff
+    // Create strategy strategy with exponential backoff
     let reconnection_strategy = Arc::new(
         ExponentialBackoff::builder()
             .initial_delay(Duration::from_millis(100))
@@ -97,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
-    // Create client endpoint with automatic reconnection using the new builder API
+    // Create client endpoint with automatic strategy using the new builder API
     let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
         .with_tcp_caller("main-server", "127.0.0.1:8080")
         .with_reconnection_strategy("main-server", reconnection_strategy)
@@ -162,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\n=== Connection Test Complete ===");
             println!("\nTip: Try stopping and restarting the server to see");
-            println!("     automatic reconnection in action!");
+            println!("     automatic strategy in action!");
         }
         Err(e) => {
             eprintln!("✗ Failed to connect: {}", e);

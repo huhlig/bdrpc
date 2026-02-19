@@ -35,7 +35,7 @@
 //! According to ADR-004, transport errors should trigger:
 //! - Close the affected transport
 //! - Notify higher layers
-//! - Attempt reconnection (if configured)
+//! - Attempt strategy (if configured)
 
 use std::io;
 use thiserror::Error;
@@ -68,7 +68,7 @@ pub enum TransportError {
     /// Failed to establish a connection to the remote endpoint.
     ///
     /// This error occurs during connection establishment and may be retried
-    /// with a reconnection strategy.
+    /// with a strategy strategy.
     #[error("failed to connect to {address}: {source}")]
     ConnectionFailed {
         /// The address that failed to connect
@@ -81,7 +81,7 @@ pub enum TransportError {
     /// Connection was lost during operation.
     ///
     /// This error occurs when an established connection is unexpectedly closed
-    /// or becomes unusable. It triggers reconnection if configured.
+    /// or becomes unusable. It triggers strategy if configured.
     #[error("connection lost: {reason}")]
     ConnectionLost {
         /// Description of why the connection was lost
@@ -223,7 +223,7 @@ pub enum TransportError {
 }
 
 impl TransportError {
-    /// Returns `true` if this error is potentially recoverable through reconnection.
+    /// Returns `true` if this error is potentially recoverable through strategy.
     ///
     /// Recoverable errors include:
     /// - Connection failures (can retry)

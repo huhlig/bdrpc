@@ -208,44 +208,18 @@
 //! - QUIC transport for improved performance over unreliable networks
 //! - Unix domain sockets for local IPC
 
+mod caller;
 mod config;
-mod enhanced;
 mod error;
 mod manager;
-mod memory;
-mod tcp;
+pub mod provider;
+pub mod strategy;
 mod traits;
+mod types;
 
-#[cfg(feature = "tls")]
-mod tls;
-
-#[cfg(feature = "compression")]
-mod compression;
-
-#[cfg(feature = "websocket")]
-mod websocket;
-
-#[cfg(feature = "quic")]
-mod quic;
-
-pub use config::{TransportConfig, TransportType};
-pub use enhanced::{
-    CallerState, CallerTransport, TransportConnection, TransportEventHandler, TransportListener,
-};
-pub use error::TransportError;
-pub use manager::TransportManager;
-pub use memory::MemoryTransport;
-pub use tcp::TcpTransport;
-pub use traits::{Transport, TransportId, TransportMetadata};
-
-#[cfg(feature = "tls")]
-pub use tls::{TlsConfig, TlsTransport};
-
-#[cfg(feature = "compression")]
-pub use compression::{CompressedTransport, CompressionAlgorithm, CompressionConfig};
-
-#[cfg(feature = "websocket")]
-pub use websocket::{WebSocketConfig, WebSocketListener, WebSocketTransport};
-
-#[cfg(feature = "quic")]
-pub use quic::{QuicConfig, QuicListener, QuicTransport};
+pub use self::caller::{CallerState, CallerTransport};
+pub use self::config::{TransportConfig, TransportType};
+pub use self::error::TransportError;
+pub use self::manager::TransportManager;
+pub use self::traits::{Transport, TransportEventHandler, TransportListener};
+pub use self::types::{TransportConnection, TransportId, TransportMetadata};

@@ -38,7 +38,7 @@ async-trait = "0.1"
 # UUID generation
 uuid = { version = "1.11", features = ["v4"] }
 
-# Random number generation (for reconnection jitter)
+# Random number generation (for strategy jitter)
 rand = "0.10"
 
 # Synchronization primitives
@@ -93,6 +93,5 @@ harness = false
 name = "latency"
 
 [[example]]
-name = "file_transfer_service_async"
-required-features = ["serde"]
-harness = false
+name = "canonical_example"
+required-features = ["serde", "derive"]

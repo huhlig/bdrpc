@@ -17,18 +17,18 @@
 //! # Reconnection Example with Transport Manager
 //!
 //! This example demonstrates how to implement robust connections with automatic
-//! reconnection handling using the modern transport manager API. It showcases:
+//! strategy handling using the modern transport manager API. It showcases:
 //!
 //! - Server using `add_listener()` for connection acceptance
-//! - Client with exponential backoff reconnection strategy
+//! - Client with exponential backoff strategy strategy
 //! - Graceful handling of connection failures
 //! - Connection state monitoring and recovery
-//! - Heartbeat protocol for testing reconnection behavior
+//! - Heartbeat protocol for testing strategy behavior
 //!
 //! ## Architecture
 //!
 //! ```text
-//! Server (listen_manual)              Client (with reconnection)
+//! Server (listen_manual)              Client (with strategy)
 //! ┌─────────────────────┐            ┌─────────────────────┐
 //! │ Listen on port      │            │ Connect with mTLS   │
 //! │ Accept connections  │◄───────────│ Exponential backoff │
@@ -50,8 +50,8 @@
 //!    - Handling client disconnections gracefully
 //!
 //! 2. **Client Side**:
-//!    - Configuring exponential backoff reconnection strategy
-//!    - Automatic reconnection on connection failure
+//!    - Configuring exponential backoff strategy strategy
+//!    - Automatic strategy on connection failure
 //!    - Maintaining connection state across reconnects
 //!    - Sending periodic heartbeat messages
 //!
@@ -72,20 +72,20 @@
 //! cargo run --example mtls_reconnect_manual --features serde -- client
 //! ```
 //!
-//! Try stopping and restarting the server to see reconnection in action!
+//! Try stopping and restarting the server to see strategy in action!
 //!
 //! ## Testing Reconnection
 //!
 //! 1. Start the server
 //! 2. Start the client (it will connect)
 //! 3. Stop the server (Ctrl+C)
-//! 4. Observe client attempting reconnection with exponential backoff
+//! 4. Observe client attempting strategy with exponential backoff
 //! 5. Restart the server
 //! 6. Client automatically reconnects and resumes operation
 //!
 //! ## Notes
 //!
-//! This example focuses on the reconnection pattern using the modern API. For mTLS:
+//! This example focuses on the strategy pattern using the modern API. For mTLS:
 //! - See the `mtls_demo` example for certificate configuration
 //! - Configure TLS at the transport layer before connecting
 //! - Use the `TlsTransport` wrapper with proper certificates
@@ -101,10 +101,10 @@ use bdrpc::serialization::JsonSerializer;
 use bdrpc::transport::{TransportConfig, TransportType};
 use tokio::time::sleep;
 
-/// Heartbeat protocol for testing reconnection.
+/// Heartbeat protocol for testing strategy.
 ///
 /// This simple protocol sends periodic heartbeat messages to verify
-/// the connection is alive and to demonstrate reconnection behavior.
+/// the connection is alive and to demonstrate strategy behavior.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 enum HeartbeatProtocol {
     /// Ping message with sequence number
@@ -165,14 +165,14 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Run the mTLS client with automatic reconnection.
+/// Run the mTLS client with automatic strategy.
 ///
-/// This demonstrates configuring a client with exponential backoff reconnection
+/// This demonstrates configuring a client with exponential backoff strategy
 /// strategy, which automatically handles connection failures and reconnects.
 async fn run_client() -> Result<(), Box<dyn Error>> {
     println!("\n🔐 Starting Client with Reconnection\n");
 
-    // Configure exponential backoff reconnection strategy
+    // Configure exponential backoff strategy strategy
     let reconnect_strategy = Arc::new(
         ExponentialBackoff::builder()
             .initial_delay(Duration::from_millis(500))
@@ -191,7 +191,7 @@ async fn run_client() -> Result<(), Box<dyn Error>> {
     println!("   • Jitter: Enabled");
     println!("   • Max Attempts: Unlimited\n");
 
-    // Create endpoint using EndpointBuilder with reconnection strategy
+    // Create endpoint using EndpointBuilder with strategy strategy
     let mut endpoint = EndpointBuilder::client(JsonSerializer::default())
         .with_tcp_caller("server", "127.0.0.1:8443")
         .with_reconnection_strategy("server", reconnect_strategy)
@@ -203,9 +203,9 @@ async fn run_client() -> Result<(), Box<dyn Error>> {
     println!("   • Protocol: Heartbeat v1");
     println!("   • Direction: Bidirectional");
     println!("   • Server Address: 127.0.0.1:8443");
-    println!("   • Transport: Named 'server' with reconnection\n");
+    println!("   • Transport: Named 'server' with strategy\n");
 
-    println!("💡 Note: This example demonstrates reconnection patterns.");
+    println!("💡 Note: This example demonstrates strategy patterns.");
     println!("   For actual mTLS, configure TLS at the transport layer.\n");
 
     println!("🔄 Attempting to connect to server...\n");
@@ -277,7 +277,7 @@ async fn run_client() -> Result<(), Box<dyn Error>> {
             }
             Err(e) => {
                 eprintln!("❌ Failed to send ping: {}", e);
-                eprintln!("   Connection lost - reconnection strategy will handle this");
+                eprintln!("   Connection lost - strategy strategy will handle this");
                 break;
             }
         }
@@ -321,7 +321,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("💡 Tips:");
         println!("   • Start the server first");
         println!("   • Start the client in another terminal");
-        println!("   • Try stopping/restarting the server to see reconnection");
+        println!("   • Try stopping/restarting the server to see strategy");
         println!("   • Watch the exponential backoff delays in action\n");
         return Ok(());
     }

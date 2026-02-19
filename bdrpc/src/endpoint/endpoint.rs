@@ -648,7 +648,7 @@ impl<S: Serializer> Endpoint<S> {
     ///
     /// # Arguments
     ///
-    /// * `connection_id` - The ID of the connection to create the channel on
+    /// * `transport_id` - The transport/connection ID to create the channel on
     /// * `protocol_name` - The name of the protocol (must match what was registered)
     ///
     /// # Returns
@@ -706,7 +706,7 @@ impl<S: Serializer> Endpoint<S> {
     /// ```
     pub async fn get_channels<P: Protocol>(
         &self,
-        connection_id: &str,
+        transport_id: crate::transport::TransportId,
         protocol_name: &str,
     ) -> Result<
         (
@@ -716,10 +716,11 @@ impl<S: Serializer> Endpoint<S> {
         EndpointError,
     > {
         // Get the negotiated protocol info
+        let connection_id_str = transport_id.to_string();
         let protocol_info = {
             let negotiated = self.negotiated.read().await;
             negotiated
-                .get(connection_id)
+                .get(&connection_id_str)
                 .and_then(|protocols| protocols.iter().find(|p| p.name == protocol_name).cloned())
                 .ok_or_else(|| EndpointError::ProtocolNotRegistered {
                     protocol: protocol_name.to_string(),
@@ -736,7 +737,7 @@ impl<S: Serializer> Endpoint<S> {
             (false, true) => ProtocolDirection::RespondOnly,
             (false, false) => {
                 return Err(EndpointError::ChannelCreationFailed {
-                    connection_id: connection_id.to_string(),
+                    connection_id: connection_id_str,
                     protocol: protocol_name.to_string(),
                     channel_id,
                     reason:
@@ -753,17 +754,23 @@ impl<S: Serializer> Endpoint<S> {
             .create_channel::<P>(channel_id, self.config.channel_buffer_size)
             .await
             .map_err(|e| EndpointError::ChannelCreationFailed {
-                connection_id: connection_id.to_string(),
+                connection_id: connection_id_str.clone(),
                 protocol: protocol_name.to_string(),
                 channel_id,
                 reason: format!("Failed to create local channel: {}", e),
             })?;
 
+        // TODO: Wire the channel to the transport router
+        // This requires additional architecture work to bridge typed channels
+        // with the byte-oriented transport router. The current channel design
+        // uses typed Envelope<P> messages, while the router expects Vec<u8>.
+        // This will be addressed in a future phase.
+
         // Request the channel - this sends a request to the remote endpoint
         // The remote will create the channel on their side and send back a response
         let request_result = self
             .request_channel(
-                connection_id,
+                &connection_id_str,
                 channel_id,
                 protocol_name,
                 protocol_info.version,
@@ -785,7 +792,7 @@ impl<S: Serializer> Endpoint<S> {
             .get_receiver::<P>(channel_id)
             .await
             .map_err(|e| EndpointError::ChannelCreationFailed {
-                connection_id: connection_id.to_string(),
+                connection_id: connection_id_str.clone(),
                 protocol: protocol_name.to_string(),
                 channel_id,
                 reason: format!("Failed to get channel receiver: {}", e),
@@ -795,7 +802,7 @@ impl<S: Serializer> Endpoint<S> {
         tracing::info!(
             "Created channels for protocol '{}' on connection {} with channel ID {}",
             protocol_name,
-            connection_id,
+            connection_id_str,
             channel_id.as_u64()
         );
 
@@ -1043,7 +1050,7 @@ impl<S: Serializer> Endpoint<S> {
     ///
     /// **DEPRECATED:** This method is deprecated in favor of the new transport management API.
     /// Use `add_caller()` followed by `connect_transport()` instead for better control over
-    /// reconnection and transport lifecycle.
+    /// strategy and transport lifecycle.
     ///
     /// # Migration Guide
     ///
@@ -1100,11 +1107,139 @@ impl<S: Serializer> Endpoint<S> {
         self.try_connect(addr).await
     }
 
-    /// Connects to a remote endpoint with automatic reconnection.
+    /// Disconnects a specific transport connection.
+    ///
+    /// This method performs a complete cleanup of a transport connection:
+    /// - Shuts down the router (stops send/receive tasks)
+    /// - Removes the transport from the transport manager
+    /// - Cleans up connection metadata
+    ///
+    /// This method is idempotent - calling it multiple times with the same
+    /// transport ID is safe and will not cause errors.
+    ///
+    /// # Arguments
+    ///
+    /// * `transport_id` - The transport ID to disconnect
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the disconnect was successful or if the transport
+    /// was already disconnected.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    /// use bdrpc::transport::TransportId;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    ///
+    /// // ... establish connection and get transport_id ...
+    /// # let transport_id = TransportId::new(1);
+    ///
+    /// // Disconnect the transport
+    /// endpoint.disconnect(transport_id).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+            transport_id = %transport_id,
+        )
+    ))]
+    pub async fn disconnect(
+        &self,
+        transport_id: crate::transport::TransportId,
+    ) -> Result<(), EndpointError> {
+        #[cfg(feature = "observability")]
+        tracing::info!(
+            endpoint_id = %self.endpoint_id,
+            transport_id = %transport_id,
+            "Disconnecting transport"
+        );
+
+        // Delegate to transport manager
+        self.transport_manager
+            .disconnect(transport_id)
+            .await
+            .map_err(EndpointError::Transport)?;
+
+        #[cfg(feature = "observability")]
+        tracing::info!(
+            endpoint_id = %self.endpoint_id,
+            transport_id = %transport_id,
+            "Transport disconnected successfully"
+        );
+
+        Ok(())
+    }
+
+    /// Shuts down all transport connections gracefully.
+    ///
+    /// This method disconnects all active transports, ensuring proper cleanup
+    /// of all resources. It continues even if individual disconnects fail,
+    /// logging errors but not propagating them.
+    ///
+    /// This is useful when shutting down the endpoint or when you need to
+    /// cleanly close all connections.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if all transports were shut down successfully.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::JsonSerializer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
+    ///
+    /// // ... establish connections ...
+    ///
+    /// // Shutdown all connections
+    /// endpoint.shutdown().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+        )
+    ))]
+    pub async fn shutdown(&self) -> Result<(), EndpointError> {
+        #[cfg(feature = "observability")]
+        tracing::info!(
+            endpoint_id = %self.endpoint_id,
+            "Shutting down endpoint"
+        );
+
+        // Shutdown all transports
+        self.transport_manager
+            .shutdown_all()
+            .await
+            .map_err(EndpointError::Transport)?;
+
+        #[cfg(feature = "observability")]
+        tracing::info!(
+            endpoint_id = %self.endpoint_id,
+            "Endpoint shut down successfully"
+        );
+
+        Ok(())
+    }
+
+    /// Connects to a remote endpoint with automatic strategy.
     ///
     /// **DEPRECATED:** This method is deprecated in favor of the new transport management API.
-    /// Use `add_caller()` with a reconnection strategy in the `TransportConfig`, then call
-    /// `connect_transport()`. The new API provides better control and automatic reconnection
+    /// Use `add_caller()` with a strategy strategy in the `TransportConfig`, then call
+    /// `connect_transport()`. The new API provides better control and automatic strategy
     /// is built into the transport manager.
     ///
     /// # Migration Guide
@@ -1113,7 +1248,7 @@ impl<S: Serializer> Endpoint<S> {
     /// ```rust,no_run
     /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
     /// # use bdrpc::serialization::JsonSerializer;
-    /// # use bdrpc::reconnection::ExponentialBackoff;
+    /// # use bdrpc::strategy::ExponentialBackoff;
     /// # use std::sync::Arc;
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let strategy = Arc::new(ExponentialBackoff::default());
@@ -1130,18 +1265,18 @@ impl<S: Serializer> Endpoint<S> {
     /// # use bdrpc::endpoint::{Endpoint, EndpointConfig};
     /// # use bdrpc::serialization::JsonSerializer;
     /// # use bdrpc::transport::{TransportConfig, TransportType};
-    /// # use bdrpc::reconnection::ExponentialBackoff;
+    /// # use bdrpc::strategy::ExponentialBackoff;
     /// # use std::sync::Arc;
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
     /// endpoint.register_caller("MyProtocol", 1).await?;
     ///
-    /// // Add caller with reconnection strategy
+    /// // Add caller with strategy strategy
     /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
     ///     .with_reconnection_strategy(Arc::new(ExponentialBackoff::default()));
     /// endpoint.add_caller("main".to_string(), config).await?;
     ///
-    /// // Connect - reconnection is automatic
+    /// // Connect - strategy is automatic
     /// let connection = endpoint.connect_transport("main").await?;
     /// # Ok(())
     /// # }
@@ -1150,12 +1285,12 @@ impl<S: Serializer> Endpoint<S> {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - All reconnection attempts fail
+    /// - All strategy attempts fail
     /// - The strategy decides not to reconnect
     /// - Connection succeeds but handshake fails
     #[deprecated(
         since = "0.2.0",
-        note = "Use `add_caller()` with reconnection strategy and `connect_transport()` instead"
+        note = "Use `add_caller()` with strategy strategy and `connect_transport()` instead"
     )]
     #[cfg_attr(feature = "observability", tracing::instrument(
         skip(self),
@@ -1216,7 +1351,7 @@ impl<S: Serializer> Endpoint<S> {
                         }
                         _ => {
                             // Non-transport errors (handshake, serialization, etc.)
-                            // should not trigger reconnection
+                            // should not trigger strategy
                             #[cfg(feature = "tracing")]
                             tracing::warn!(
                                 "Connection to {} failed with non-recoverable error: {}",
@@ -1258,11 +1393,11 @@ impl<S: Serializer> Endpoint<S> {
         }
     }
 
-    /// Attempts a single connection without reconnection logic.
+    /// Attempts a single connection without strategy logic.
     ///
     /// This is the internal method that performs the actual connection.
     /// Use `connect()` for normal connections or `connect_with_reconnection()`
-    /// for connections with automatic reconnection.
+    /// for connections with automatic strategy.
     #[cfg_attr(feature = "observability", tracing::instrument(
         skip(self),
         fields(
@@ -1271,12 +1406,13 @@ impl<S: Serializer> Endpoint<S> {
         )
     ))]
     async fn try_connect(&mut self, addr: impl ToString) -> Result<Connection, EndpointError> {
-        use crate::transport::{TcpTransport, Transport};
+        use crate::transport::{Transport, provider::TcpTransport};
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         // Connect transport
         let mut transport = TcpTransport::connect(addr.to_string()).await?;
-        let connection_id = format!("conn-{}", transport.metadata().id.as_u64());
+        let transport_metadata = transport.metadata().clone();
+        let transport_id = transport_metadata.id;
 
         // Perform handshake
         let hello = self.create_hello_message().await;
@@ -1309,9 +1445,10 @@ impl<S: Serializer> Endpoint<S> {
         let peer_hello: HandshakeMessage = serde_json::from_slice(&msg_bytes)
             .map_err(|e| EndpointError::Serialization(e.to_string()))?;
 
-        // Process peer hello
-        let peer_capabilities = match peer_hello {
+        // Process peer hello and extract peer_id
+        let (peer_id, peer_capabilities) = match peer_hello {
             HandshakeMessage::Hello {
+                endpoint_id,
                 serializer,
                 protocols,
                 ..
@@ -1323,7 +1460,7 @@ impl<S: Serializer> Endpoint<S> {
                         theirs: serializer,
                     });
                 }
-                protocols
+                (endpoint_id, protocols)
             }
             HandshakeMessage::Error { message } => {
                 return Err(EndpointError::HandshakeFailed { reason: message });
@@ -1358,10 +1495,10 @@ impl<S: Serializer> Endpoint<S> {
         transport.write_all(&ack_bytes).await?;
         transport.flush().await?;
 
-        // Store negotiated protocols
+        // Store negotiated protocols (using transport_id as key)
         {
             let mut negotiated_map = self.negotiated.write().await;
-            negotiated_map.insert(connection_id.clone(), negotiated.clone());
+            negotiated_map.insert(transport_id.to_string(), negotiated.clone());
         }
 
         // Create the system channel for control messages
@@ -1372,7 +1509,7 @@ impl<S: Serializer> Endpoint<S> {
             .map_err(EndpointError::Channel)?;
 
         #[cfg(feature = "tracing")]
-        tracing::debug!("System channel created for connection {}", connection_id);
+        tracing::debug!("System channel created for connection {}", transport_id);
 
         // Spawn background task to process system messages
         let system_receiver = self
@@ -1381,13 +1518,24 @@ impl<S: Serializer> Endpoint<S> {
             .await
             .map_err(EndpointError::Channel)?;
 
-        self.spawn_system_message_handler(connection_id.clone(), system_receiver);
+        self.spawn_system_message_handler(transport_id.to_string(), system_receiver);
+
+        // Create connection metadata
+        let mut conn_metadata = ConnectionMetadata::new(transport_metadata.transport_type.clone());
+        if let Some(local) = transport_metadata.local_addr {
+            conn_metadata = conn_metadata.with_local_addr(local);
+        }
+        if let Some(peer) = transport_metadata.peer_addr {
+            conn_metadata = conn_metadata.with_peer_addr(peer);
+        }
 
         // Create connection
-        Ok(Connection {
-            id: connection_id,
-            negotiated_protocols: negotiated,
-        })
+        Ok(Connection::new(
+            transport_id,
+            peer_id,
+            negotiated,
+            conn_metadata,
+        ))
     }
 
     /// Listens for incoming connections as a server.
@@ -1723,10 +1871,299 @@ impl<S: Serializer> Endpoint<S> {
             .await
             .map_err(EndpointError::Transport)
     }
+    /// Accepts an incoming connection from any configured listener.
+    ///
+    /// This method blocks until a connection is accepted from one of the
+    /// configured listener transports. It performs the handshake protocol
+    /// and returns a Connection handle.
+    ///
+    /// **Note:** This is a simplified accept API. For production use, consider
+    /// implementing a proper listener that can accept from multiple transports
+    /// concurrently. This method currently requires manual listener setup.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Connection)` - Successfully accepted and negotiated connection
+    /// - `Err(EndpointError)` - Failed to accept or handshake failed
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - No listeners are configured
+    /// - All listeners are disabled
+    /// - Connection acceptance fails
+    /// - Handshake negotiation fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
+    /// use bdrpc::serialization::PostcardSerializer;
+    /// use bdrpc::transport::{TransportConfig, TransportType};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut endpoint = Endpoint::new(
+    ///     PostcardSerializer::default(),
+    ///     EndpointConfig::default()
+    /// );
+    /// endpoint.register_responder("MyProtocol", 1).await?;
+    ///
+    /// // Add a TCP listener
+    /// let config = TransportConfig::new(TransportType::Tcp, "0.0.0.0:8080");
+    /// endpoint.add_listener("tcp-main".to_string(), config).await?;
+    ///
+    /// // Accept connections in a loop
+    /// loop {
+    ///     let connection = endpoint.accept().await?;
+    ///     println!("Accepted connection: {}", connection.id());
+    ///     
+    ///     // Spawn a task to handle this connection
+    ///     tokio::spawn(async move {
+    ///         // Handle connection...
+    ///     });
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "observability", tracing::instrument(
+        skip(self),
+        fields(
+            endpoint_id = %self.endpoint_id,
+        )
+    ))]
+    pub async fn accept(&self) -> Result<Connection, EndpointError> {
+        // Step 1: Accept a connection from any configured listener
+        // This uses the channel-based accept architecture where background tasks
+        // continuously accept connections and send them through a channel
+        let (mut transport, transport_id, listener_name) = self
+            .transport_manager
+            .accept_connection()
+            .await
+            .map_err(EndpointError::Transport)?;
+
+        #[cfg(feature = "observability")]
+        tracing::debug!(
+            listener = %listener_name,
+            transport_id = %transport_id,
+            "Accepted connection from listener"
+        );
+
+        // Step 2: Use transport_id directly as connection identifier (no UUID needed)
+
+        // Step 3: Perform handshake protocol
+        // 3a. Collect our capabilities
+        let our_capabilities: Vec<ProtocolCapability> = {
+            let caps = self.capabilities.read().await;
+            caps.values().cloned().collect()
+        };
+
+        // 3b. Create and send Hello message
+        let hello = HandshakeMessage::Hello {
+            endpoint_id: Some(self.endpoint_id.clone()),
+            serializer: self.serializer.name().to_string(),
+            protocols: our_capabilities.clone(),
+            bdrpc_version: env!("CARGO_PKG_VERSION").to_string(),
+        };
+
+        #[cfg(feature = "observability")]
+        tracing::debug!(
+            connection_id = %transport_id,
+            endpoint_id = %self.endpoint_id,
+            protocol_count = our_capabilities.len(),
+            "Sending handshake Hello"
+        );
+
+        // Serialize and send Hello
+        let hello_bytes = self
+            .serializer
+            .serialize(&hello)
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+        crate::serialization::framing::write_frame(&mut transport, &hello_bytes)
+            .await
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+
+        // 3c. Receive peer's Hello message
+        let peer_hello_bytes = crate::serialization::framing::read_frame(&mut transport)
+            .await
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+        let peer_hello: HandshakeMessage = self
+            .serializer
+            .deserialize(&peer_hello_bytes)
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+
+        // Extract peer capabilities and endpoint ID
+        let (peer_id, peer_capabilities) = match peer_hello {
+            HandshakeMessage::Hello {
+                endpoint_id,
+                protocols,
+                ..
+            } => (endpoint_id, protocols),
+            HandshakeMessage::Error { message } => {
+                return Err(EndpointError::HandshakeFailed {
+                    reason: format!("Peer sent error: {}", message),
+                });
+            }
+            _ => {
+                return Err(EndpointError::HandshakeFailed {
+                    reason: "Expected Hello message from peer".to_string(),
+                });
+            }
+        };
+
+        #[cfg(feature = "observability")]
+        tracing::debug!(
+            connection_id = %transport_id,
+            peer_id = ?peer_id,
+            peer_protocol_count = peer_capabilities.len(),
+            "Received peer Hello"
+        );
+
+        // 3d. Negotiate protocols
+        let negotiated_protocols =
+            crate::endpoint::negotiate_protocols(&our_capabilities, &peer_capabilities);
+
+        if negotiated_protocols.is_empty() {
+            #[cfg(feature = "observability")]
+            tracing::warn!(
+                connection_id = %transport_id,
+                "No protocols could be negotiated"
+            );
+
+            // Send error to peer
+            let error_msg = HandshakeMessage::Error {
+                message: "No compatible protocols found".to_string(),
+            };
+            let error_bytes = self.serializer.serialize(&error_msg).ok();
+            if let Some(bytes) = error_bytes {
+                let _ = crate::serialization::framing::write_frame(&mut transport, &bytes).await;
+            }
+
+            return Err(EndpointError::HandshakeFailed {
+                reason: "No compatible protocols found".to_string(),
+            });
+        }
+
+        #[cfg(feature = "observability")]
+        tracing::info!(
+            connection_id = %transport_id,
+            negotiated_count = negotiated_protocols.len(),
+            protocols = ?negotiated_protocols.iter().map(|p| &p.name).collect::<Vec<_>>(),
+            "Protocols negotiated successfully"
+        );
+
+        // 3e. Send Ack message
+        let ack = HandshakeMessage::Ack {
+            negotiated: negotiated_protocols.clone(),
+        };
+        let ack_bytes = self
+            .serializer
+            .serialize(&ack)
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+        crate::serialization::framing::write_frame(&mut transport, &ack_bytes)
+            .await
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+
+        // 3f. Receive peer's Ack
+        let peer_ack_bytes = crate::serialization::framing::read_frame(&mut transport)
+            .await
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+        let peer_ack: HandshakeMessage = self
+            .serializer
+            .deserialize(&peer_ack_bytes)
+            .map_err(|e| EndpointError::Serialization(e.to_string()))?;
+
+        // Validate peer's Ack
+        match peer_ack {
+            HandshakeMessage::Ack { .. } => {
+                #[cfg(feature = "observability")]
+                tracing::debug!(
+                    connection_id = %transport_id,
+                    "Received peer Ack, handshake complete"
+                );
+            }
+            HandshakeMessage::Error { message } => {
+                return Err(EndpointError::HandshakeFailed {
+                    reason: format!("Peer rejected handshake: {}", message),
+                });
+            }
+            _ => {
+                return Err(EndpointError::HandshakeFailed {
+                    reason: "Expected Ack message from peer".to_string(),
+                });
+            }
+        }
+
+        // Step 4: Store negotiated protocols for this connection (using transport_id as key)
+        self.negotiated
+            .write()
+            .await
+            .insert(transport_id.to_string(), negotiated_protocols.clone());
+
+        // Step 5: Register the connection with the transport manager
+        // This stores the transport for later use by channels
+        self.transport_manager
+            .register_connection(transport_id, transport)
+            .await
+            .map_err(EndpointError::Transport)?;
+
+        #[cfg(feature = "observability")]
+        tracing::info!(
+            connection_id = %transport_id,
+            listener = %listener_name,
+            peer_id = ?peer_id,
+            "Connection registered successfully"
+        );
+
+        // Step 5.5: Create a TransportRouter for this connection
+        // The router handles bidirectional message routing between channels and the transport
+        let _router = self
+            .transport_manager
+            .create_router(transport_id)
+            .await
+            .map_err(EndpointError::Transport)?;
+
+        #[cfg(feature = "observability")]
+        tracing::debug!(
+            connection_id = %transport_id,
+            "TransportRouter created for connection"
+        );
+
+        // Step 6: Create system channel (ID 0) for control messages
+        // The system channel is used for dynamic channel negotiation, keepalive, etc.
+        use crate::channel::{SYSTEM_CHANNEL_ID, SystemProtocol};
+
+        self.channel_manager
+            .create_channel::<SystemProtocol>(SYSTEM_CHANNEL_ID, self.config.channel_buffer_size)
+            .await
+            .map_err(EndpointError::Channel)?;
+
+        #[cfg(feature = "observability")]
+        tracing::debug!(
+            connection_id = %transport_id,
+            channel_id = %SYSTEM_CHANNEL_ID.as_u64(),
+            "System channel created"
+        );
+
+        // Step 7: Create connection metadata
+        let metadata = ConnectionMetadata {
+            local_addr: None, // TODO: Extract from transport metadata
+            peer_addr: None,  // TODO: Extract from transport metadata
+            transport_type: listener_name,
+            connected_at: std::time::Instant::now(),
+        };
+
+        // Step 8: Return the connection handle with negotiated protocols
+        Ok(Connection {
+            id: transport_id,
+            negotiated_protocols,
+            peer_id,
+            metadata: Arc::new(metadata),
+        })
+    }
 
     /// Adds a caller transport to this endpoint.
     ///
-    /// This allows the endpoint to establish outbound connections. If a reconnection
+    /// This allows the endpoint to establish outbound connections. If a strategy
     /// strategy is configured in the transport config, the caller will automatically
     /// reconnect on connection failure.
     ///
@@ -1748,14 +2185,14 @@ impl<S: Serializer> Endpoint<S> {
     /// use bdrpc::endpoint::{Endpoint, EndpointConfig};
     /// use bdrpc::serialization::JsonSerializer;
     /// use bdrpc::transport::{TransportConfig, TransportType};
-    /// use bdrpc::reconnection::ExponentialBackoff;
+    /// use bdrpc::strategy::ExponentialBackoff;
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut endpoint = Endpoint::new(JsonSerializer::default(), EndpointConfig::default());
     /// endpoint.register_caller("MyProtocol", 1).await?;
     ///
-    /// // Add a TCP caller with automatic reconnection
+    /// // Add a TCP caller with automatic strategy
     /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
     ///     .with_reconnection_strategy(Arc::new(ExponentialBackoff::default()));
     /// endpoint.add_caller("tcp-main".to_string(), config).await?;
@@ -1794,7 +2231,7 @@ impl<S: Serializer> Endpoint<S> {
     /// Connects a caller transport by name.
     ///
     /// This initiates a connection using the specified caller transport. If the
-    /// caller has a reconnection strategy configured, it will automatically
+    /// caller has a strategy strategy configured, it will automatically
     /// reconnect on connection failure.
     ///
     /// # Arguments
@@ -1847,17 +2284,37 @@ impl<S: Serializer> Endpoint<S> {
             .await
             .map_err(EndpointError::Transport)?;
 
-        // Create a connection ID from the transport ID
-        let connection_id = format!("transport-{}", transport_id);
-
         // Get negotiated protocols (will be populated by TransportEventHandler)
         let negotiated = self.negotiated.read().await;
-        let negotiated_protocols = negotiated.get(&connection_id).cloned().unwrap_or_default();
+        let negotiated_protocols = negotiated
+            .get(&transport_id.to_string())
+            .cloned()
+            .unwrap_or_default();
 
-        Ok(Connection {
-            id: connection_id,
+        // Get transport metadata
+        let transport_metadata = self
+            .transport_manager
+            .get_metadata(transport_id)
+            .await
+            .ok_or_else(|| EndpointError::InvalidConfiguration {
+                reason: format!("Transport {} not found after connection", transport_id),
+            })?;
+
+        // Create connection metadata
+        let mut conn_metadata = ConnectionMetadata::new(transport_metadata.transport_type.clone());
+        if let Some(local) = transport_metadata.local_addr {
+            conn_metadata = conn_metadata.with_local_addr(local);
+        }
+        if let Some(peer) = transport_metadata.peer_addr {
+            conn_metadata = conn_metadata.with_peer_addr(peer);
+        }
+
+        Ok(Connection::new(
+            transport_id,
+            None, // peer_id not available in this flow
             negotiated_protocols,
-        })
+            conn_metadata,
+        ))
     }
 
     /// Removes a listener transport.
@@ -1908,7 +2365,7 @@ impl<S: Serializer> Endpoint<S> {
 
     /// Removes a caller transport.
     ///
-    /// This stops any reconnection attempts and closes the connection.
+    /// This stops any strategy attempts and closes the connection.
     ///
     /// # Arguments
     ///
@@ -2001,7 +2458,7 @@ impl<S: Serializer> Endpoint<S> {
     /// Disables a transport (listener or caller).
     ///
     /// For listeners, this stops accepting new connections.
-    /// For callers, this stops connection attempts and reconnection.
+    /// For callers, this stops connection attempts and strategy.
     ///
     /// # Arguments
     ///
@@ -3000,24 +3457,108 @@ impl<S: Serializer> Listener<S> {
 /// Represents an active connection to a remote endpoint.
 ///
 /// This handle provides information about the connection and the
-/// negotiated protocols.
+/// negotiated protocols. It can be cloned and shared across tasks.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// # use bdrpc::endpoint::Endpoint;
+/// # use bdrpc::serialization::PostcardSerializer;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let endpoint = Endpoint::new(PostcardSerializer::default(), Default::default());
+///
+/// // Accept a connection (when implemented)
+/// // let connection = endpoint.accept().await?;
+/// // println!("Connection ID: {}", connection.id());
+/// // println!("Peer ID: {:?}", connection.peer_id());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct Connection {
-    /// Unique identifier for this connection.
-    id: String,
+    /// Unique identifier for this connection (same as transport ID).
+    id: crate::transport::TransportId,
     /// Protocols negotiated for this connection.
     negotiated_protocols: Vec<NegotiatedProtocol>,
+    /// Optional peer endpoint ID.
+    peer_id: Option<String>,
+    /// Connection metadata.
+    metadata: Arc<ConnectionMetadata>,
+}
+
+/// Metadata about an active connection.
+///
+/// This provides information about the transport layer and connection timing.
+#[derive(Debug, Clone)]
+pub struct ConnectionMetadata {
+    /// Local address if available.
+    pub local_addr: Option<std::net::SocketAddr>,
+    /// Peer address if available.
+    pub peer_addr: Option<std::net::SocketAddr>,
+    /// Transport type (e.g., "tcp", "quic", "websocket").
+    pub transport_type: String,
+    /// When the connection was established.
+    pub connected_at: std::time::Instant,
+}
+
+impl ConnectionMetadata {
+    /// Creates new connection metadata.
+    pub fn new(transport_type: impl Into<String>) -> Self {
+        Self {
+            local_addr: None,
+            peer_addr: None,
+            transport_type: transport_type.into(),
+            connected_at: std::time::Instant::now(),
+        }
+    }
+
+    /// Sets the local address.
+    pub fn with_local_addr(mut self, addr: std::net::SocketAddr) -> Self {
+        self.local_addr = Some(addr);
+        self
+    }
+
+    /// Sets the peer address.
+    pub fn with_peer_addr(mut self, addr: std::net::SocketAddr) -> Self {
+        self.peer_addr = Some(addr);
+        self
+    }
 }
 
 impl Connection {
-    /// Returns the connection identifier.
-    pub fn id(&self) -> &str {
-        &self.id
+    /// Creates a new connection handle.
+    pub(crate) fn new(
+        id: crate::transport::TransportId,
+        peer_id: Option<String>,
+        negotiated_protocols: Vec<NegotiatedProtocol>,
+        metadata: ConnectionMetadata,
+    ) -> Self {
+        Self {
+            id,
+            negotiated_protocols,
+            peer_id,
+            metadata: Arc::new(metadata),
+        }
+    }
+
+    /// Returns the connection identifier (transport ID).
+    pub fn id(&self) -> crate::transport::TransportId {
+        self.id
+    }
+
+    /// Returns the peer's endpoint ID if provided during handshake.
+    pub fn peer_id(&self) -> Option<&str> {
+        self.peer_id.as_deref()
     }
 
     /// Returns the negotiated protocols for this connection.
     pub fn protocols(&self) -> &[NegotiatedProtocol] {
         &self.negotiated_protocols
+    }
+
+    /// Returns connection metadata.
+    pub fn metadata(&self) -> &ConnectionMetadata {
+        &self.metadata
     }
 
     /// Checks if a specific protocol is available on this connection.
@@ -3399,7 +3940,7 @@ mod tests {
         let connection = client.connect(&server_addr).await.unwrap();
 
         // Verify connection
-        assert!(!connection.id().is_empty());
+        assert!(connection.id().as_u64() > 0);
         assert_eq!(connection.protocols().len(), 1);
         assert!(connection.has_protocol("TestProtocol"));
 
@@ -3656,12 +4197,13 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to get channels with an invalid connection ID
+        // Try to get channels with an invalid transport ID
+        let invalid_transport_id = crate::transport::TransportId::new(99999);
         let result = client
-            .get_channels::<TestProtocol>("invalid-connection-id", "TestProtocol")
+            .get_channels::<TestProtocol>(invalid_transport_id, "TestProtocol")
             .await;
 
-        assert!(result.is_err(), "Should fail with invalid connection ID");
+        assert!(result.is_err(), "Should fail with invalid transport ID");
     }
 
     #[tokio::test]

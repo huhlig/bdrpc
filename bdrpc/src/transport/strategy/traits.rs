@@ -1,21 +1,21 @@
 //! Reconnection strategy traits and types.
 //!
-//! This module defines the pluggable reconnection strategy pattern that allows
-//! different reconnection behaviors for different use cases.
+//! This module defines the pluggable strategy strategy pattern that allows
+//! different strategy behaviors for different use cases.
 
 use crate::transport::TransportError;
 use async_trait::async_trait;
 use std::time::Duration;
 
-/// A strategy for handling reconnection attempts after connection failures.
+/// A strategy for handling strategy attempts after connection failures.
 ///
-/// This trait allows pluggable reconnection behavior, enabling different strategies
+/// This trait allows pluggable strategy behavior, enabling different strategies
 /// for different use cases (exponential backoff, fixed delay, circuit breaker, etc.).
 ///
 /// # Examples
 ///
 /// ```
-/// use bdrpc::reconnection::{ReconnectionStrategy, ExponentialBackoff};
+/// use bdrpc::strategy::{ReconnectionStrategy, ExponentialBackoff};
 /// use std::time::Duration;
 ///
 /// let strategy = ExponentialBackoff::builder()
@@ -25,7 +25,7 @@ use std::time::Duration;
 /// ```
 #[async_trait]
 pub trait ReconnectionStrategy: Send + Sync {
-    /// Determine if reconnection should be attempted.
+    /// Determine if strategy should be attempted.
     ///
     /// # Arguments
     ///
@@ -34,10 +34,10 @@ pub trait ReconnectionStrategy: Send + Sync {
     ///
     /// # Returns
     ///
-    /// `true` if reconnection should be attempted, `false` to give up
+    /// `true` if strategy should be attempted, `false` to give up
     async fn should_reconnect(&self, attempt: u32, last_error: &TransportError) -> bool;
 
-    /// Calculate the delay before the next reconnection attempt.
+    /// Calculate the delay before the next strategy attempt.
     ///
     /// # Arguments
     ///
@@ -72,12 +72,12 @@ pub trait ReconnectionStrategy: Send + Sync {
     fn name(&self) -> &str;
 }
 
-/// Metadata about reconnection attempts.
+/// Metadata about strategy attempts.
 ///
 /// This is used for observability and debugging.
 #[derive(Debug, Clone, Default)]
 pub struct ReconnectionMetrics {
-    /// Total number of reconnection attempts
+    /// Total number of strategy attempts
     pub total_attempts: u64,
     /// Number of successful reconnections
     pub successful_reconnections: u64,
@@ -95,19 +95,19 @@ impl ReconnectionMetrics {
         Self::default()
     }
 
-    /// Record a reconnection attempt.
+    /// Record a strategy attempt.
     pub fn record_attempt(&mut self) {
         self.total_attempts += 1;
     }
 
-    /// Record a successful reconnection.
+    /// Record a successful strategy.
     pub fn record_success(&mut self) {
         self.successful_reconnections += 1;
         self.consecutive_failures = 0;
         self.last_error = None;
     }
 
-    /// Record a failed reconnection.
+    /// Record a failed strategy.
     pub fn record_failure(&mut self, error: &TransportError) {
         self.failed_reconnections += 1;
         self.consecutive_failures += 1;

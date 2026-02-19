@@ -29,7 +29,7 @@
 //!
 //! Each error layer has a specific handling strategy:
 //!
-//! - **Transport errors** → Close transport, trigger reconnection
+//! - **Transport errors** → Close transport, trigger strategy
 //! - **Channel errors** → Close channel, keep transport alive
 //! - **Application errors** → Propagate to caller, keep channel open
 //!
@@ -74,7 +74,7 @@ use std::fmt;
 ///
 /// Each error type has an associated recovery strategy:
 ///
-/// - **Transport errors**: Close all channels, attempt reconnection
+/// - **Transport errors**: Close all channels, attempt strategy
 /// - **Channel errors**: Close affected channel, keep transport alive
 /// - **Application errors**: Return to caller, no framework action
 ///
@@ -88,7 +88,7 @@ use std::fmt;
 ///     match error {
 ///         BdrpcError::Transport(e) => {
 ///             eprintln!("Transport failed: {}", e);
-///             // Trigger reconnection
+///             // Trigger strategy
 ///         }
 ///         BdrpcError::Channel(e) => {
 ///             eprintln!("Channel failed: {}", e);
@@ -107,7 +107,7 @@ pub enum BdrpcError {
     ///
     /// Transport errors indicate failures in the underlying network connection.
     /// These errors typically require closing the transport and all associated
-    /// channels, and may trigger reconnection attempts.
+    /// channels, and may trigger strategy attempts.
     ///
     /// # Examples
     ///

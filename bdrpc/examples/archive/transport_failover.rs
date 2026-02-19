@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== Transport Failover Example ===\n");
 
-    // Create reconnection strategy for both transports
+    // Create strategy strategy for both transports
     let reconnection_strategy = Arc::new(
         ExponentialBackoff::builder()
             .initial_delay(Duration::from_millis(100))
@@ -110,8 +110,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✓ Client created with endpoint ID: {}", endpoint.id());
     println!("✓ Configured transports:");
-    println!("  - primary: 127.0.0.1:8080 (with reconnection)");
-    println!("  - backup:  127.0.0.1:8081 (with reconnection)");
+    println!("  - primary: 127.0.0.1:8080 (with strategy)");
+    println!("  - backup:  127.0.0.1:8081 (with strategy)");
     println!("✓ Registered protocol: Echo (v1)");
     println!("\n=== Attempting Connection with Failover ===\n");
 
@@ -198,8 +198,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  2. Detect failures automatically");
     println!("  3. Switch to backup transport when primary fails");
     println!("  4. Restore channels on the new connection");
-    println!("\nThe transport manager's reconnection strategies help with");
-    println!("automatic reconnection, but application-level failover logic");
+    println!("\nThe transport manager's strategy strategies help with");
+    println!("automatic strategy, but application-level failover logic");
     println!("is needed to switch between different servers.");
 
     println!("\nPress Ctrl+C to exit.");

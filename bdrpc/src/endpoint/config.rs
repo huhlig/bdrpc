@@ -16,7 +16,7 @@
 
 //! Configuration types for endpoints.
 
-use crate::reconnection::{ExponentialBackoff, ReconnectionStrategy};
+use crate::transport::strategy::{ExponentialBackoff, ReconnectionStrategy};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -239,13 +239,13 @@ impl EndpointConfig {
         self
     }
 
-    /// Sets the reconnection strategy.
+    /// Sets the strategy strategy.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use bdrpc::endpoint::EndpointConfig;
-    /// use bdrpc::reconnection::{FixedDelay, ReconnectionStrategy};
+    /// use bdrpc::strategy::{FixedDelay, ReconnectionStrategy};
     /// use std::sync::Arc;
     /// use std::time::Duration;
     ///

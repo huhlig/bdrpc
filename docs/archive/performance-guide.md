@@ -372,7 +372,7 @@ Choose appropriate reconnection behavior:
 use bdrpc::reconnection::ExponentialBackoff;
 use std::time::Duration;
 
-// Aggressive reconnection (critical services)
+// Aggressive strategy (critical services)
 let strategy = ExponentialBackoff::new(
     Duration::from_millis(100),  // Fast initial retry
     Duration::from_secs(5),      // Short max delay
@@ -380,7 +380,7 @@ let strategy = ExponentialBackoff::new(
     Some(20),                    // Many attempts
 );
 
-// Conservative reconnection (optional services)
+// Conservative strategy (optional services)
 let strategy = ExponentialBackoff::new(
     Duration::from_secs(1),      // Slower initial retry
     Duration::from_secs(60),     // Long max delay

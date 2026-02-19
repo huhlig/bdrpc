@@ -416,13 +416,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Example 5: Reconnection Strategies with mTLS
     println!("═══════════════════════════════════════════════════════════\n");
     println!("📋 Example 5: Reconnection Strategies with mTLS\n");
-    println!("   When using mTLS in production, implement reconnection strategies");
+    println!("   When using mTLS in production, implement strategy strategies");
     println!("   to handle network failures and certificate renewals gracefully.\n");
 
     println!("   A. Exponential Backoff (Recommended for most cases):");
     println!("   ```rust");
     println!("   use bdrpc::endpoint::{{Endpoint, EndpointConfig}};");
-    println!("   use bdrpc::reconnection::ExponentialBackoff;");
+    println!("   use bdrpc::strategy::ExponentialBackoff;");
     println!("   use bdrpc::serialization::JsonSerializer;");
     println!("   use std::sync::Arc;");
     println!("   use std::time::Duration;");
@@ -436,7 +436,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("       .max_attempts(Some(10))");
     println!("       .build();");
     println!("   ");
-    println!("   // Create endpoint with reconnection strategy");
+    println!("   // Create endpoint with strategy strategy");
     println!("   let config = EndpointConfig::default()");
     println!("       .with_reconnection_strategy(Arc::new(reconnect_strategy));");
     println!("   ");
@@ -461,7 +461,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("   B. Circuit Breaker (For high-availability systems):");
     println!("   ```rust");
-    println!("   use bdrpc::reconnection::CircuitBreaker;");
+    println!("   use bdrpc::strategy::CircuitBreaker;");
     println!("   ");
     println!("   // Circuit breaker prevents cascading failures");
     println!("   let circuit_breaker = CircuitBreaker::builder()");
@@ -476,7 +476,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("   C. Fixed Delay (For predictable retry patterns):");
     println!("   ```rust");
-    println!("   use bdrpc::reconnection::FixedDelay;");
+    println!("   use bdrpc::strategy::FixedDelay;");
     println!("   ");
     println!("   // Simple fixed delay between retries");
     println!("   let fixed_delay = FixedDelay::new(Duration::from_secs(5));");
@@ -487,9 +487,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("   D. No Reconnect (For one-shot connections):");
     println!("   ```rust");
-    println!("   use bdrpc::reconnection::NoReconnect;");
+    println!("   use bdrpc::strategy::NoReconnect;");
     println!("   ");
-    println!("   // Disable automatic reconnection");
+    println!("   // Disable automatic strategy");
     println!("   let no_reconnect = NoReconnect::new();");
     println!("   ");
     println!("   let config = EndpointConfig::default()");
@@ -520,15 +520,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   💡 Best Practices for mTLS Reconnection:");
     println!("   • Use ExponentialBackoff with jitter for most cases");
     println!("   • Implement certificate renewal before expiration");
-    println!("   • Monitor reconnection metrics (attempts, failures, delays)");
+    println!("   • Monitor strategy metrics (attempts, failures, delays)");
     println!("   • Set reasonable max_attempts to avoid infinite retries");
     println!("   • Consider circuit breaker for cascading failure prevention");
-    println!("   • Test reconnection behavior with expired certificates");
-    println!("   • Log reconnection events for debugging and monitoring\n");
+    println!("   • Test strategy behavior with expired certificates");
+    println!("   • Log strategy events for debugging and monitoring\n");
 
     println!("   🔐 Certificate Renewal During Reconnection:");
     println!("   ```rust");
-    println!("   // Reload certificates on reconnection");
+    println!("   // Reload certificates on strategy");
     println!("   async fn reconnect_with_fresh_certs() -> Result<(), Box<dyn Error>> {{");
     println!("       loop {{");
     println!("           // Load latest certificates from disk");

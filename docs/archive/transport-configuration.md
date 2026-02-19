@@ -275,7 +275,7 @@ let quic_config = QuicConfig {
     keep_alive_interval: Duration::from_secs(15),
     max_concurrent_bidi_streams: 100,
     max_concurrent_uni_streams: 100,
-    enable_0rtt: true,                      // Fast reconnection
+    enable_0rtt: true,                      // Fast strategy
     initial_window: 128 * 1024,             // 128 KB
     max_udp_payload_size: 1350,             // Safe for most networks
     enable_migration: true,                 // Network change support

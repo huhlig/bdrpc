@@ -58,8 +58,8 @@ async fn handle_transport_error(error: BdrpcError) {
         // Check if we can recover
         if transport_err.is_recoverable() {
             // Reconnection will be attempted automatically
-            // if a reconnection strategy is configured
-            eprintln!("Will attempt reconnection");
+            // if a strategy strategy is configured
+            eprintln!("Will attempt strategy");
         } else {
             eprintln!("Permanent failure: {}", transport_err);
         }

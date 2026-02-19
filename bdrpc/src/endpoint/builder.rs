@@ -17,9 +17,8 @@
 //! Builder pattern for ergonomic endpoint configuration.
 
 use crate::endpoint::{Endpoint, EndpointConfig, EndpointError, ProtocolDirection};
-use crate::reconnection::ReconnectionStrategy;
 use crate::serialization::Serializer;
-use crate::transport::{TransportConfig, TransportType};
+use crate::transport::{TransportConfig, TransportType, strategy::ReconnectionStrategy};
 use std::sync::Arc;
 
 /// A protocol registration to be applied when building the endpoint.
@@ -655,7 +654,7 @@ impl<S: Serializer> EndpointBuilder<S> {
     /// Adds a custom transport configuration.
     ///
     /// This allows you to configure a transport with custom settings,
-    /// including reconnection strategies and metadata.
+    /// including strategy strategies and metadata.
     ///
     /// # Examples
     ///
@@ -663,7 +662,7 @@ impl<S: Serializer> EndpointBuilder<S> {
     /// use bdrpc::endpoint::EndpointBuilder;
     /// use bdrpc::serialization::PostcardSerializer;
     /// use bdrpc::transport::{TransportConfig, TransportType};
-    /// use bdrpc::reconnection::ExponentialBackoff;
+    /// use bdrpc::strategy::ExponentialBackoff;
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -694,7 +693,7 @@ impl<S: Serializer> EndpointBuilder<S> {
         self
     }
 
-    /// Sets the reconnection strategy for a named caller transport.
+    /// Sets the strategy strategy for a named caller transport.
     ///
     /// This must be called after adding the transport with `with_tcp_caller()`,
     /// `with_tls_caller()`, or `with_transport()`.
@@ -704,7 +703,7 @@ impl<S: Serializer> EndpointBuilder<S> {
     /// ```rust
     /// use bdrpc::endpoint::EndpointBuilder;
     /// use bdrpc::serialization::PostcardSerializer;
-    /// use bdrpc::reconnection::ExponentialBackoff;
+    /// use bdrpc::strategy::ExponentialBackoff;
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -973,7 +972,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_reconnection_strategy() {
-        use crate::reconnection::ExponentialBackoff;
+        use crate::transport::strategy::ExponentialBackoff;
 
         let strategy = Arc::new(ExponentialBackoff::default());
 
@@ -990,7 +989,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_custom_transport() {
-        use crate::reconnection::ExponentialBackoff;
+        use crate::transport::strategy::ExponentialBackoff;
 
         let strategy = Arc::new(ExponentialBackoff::default());
         let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080")
@@ -1025,7 +1024,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reconnection_strategy_for_nonexistent_transport() {
-        use crate::reconnection::ExponentialBackoff;
+        use crate::transport::strategy::ExponentialBackoff;
 
         let strategy = Arc::new(ExponentialBackoff::default());
 
@@ -1043,7 +1042,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_all_features() {
-        use crate::reconnection::ExponentialBackoff;
+        use crate::transport::strategy::ExponentialBackoff;
         use std::time::Duration;
 
         let strategy = Arc::new(ExponentialBackoff::default());

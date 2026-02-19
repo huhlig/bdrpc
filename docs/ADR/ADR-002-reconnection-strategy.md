@@ -21,7 +21,7 @@ We will implement a trait-based reconnection strategy that can be swapped at run
 ```rust
 #[async_trait]
 trait ReconnectionStrategy: Send + Sync {
-    /// Determine if reconnection should be attempted
+    /// Determine if strategy should be attempted
     async fn should_reconnect(&self, attempt: u32, last_error: &TransportError) -> bool;
     
     /// Calculate delay before next attempt
@@ -188,7 +188,7 @@ During shutdown, reconnection loops must be cancelled cleanly:
 ```rust
 impl Endpoint {
     async fn shutdown(&self) {
-        // Cancel all reconnection tasks
+        // Cancel all strategy tasks
         // Wait for in-flight connections to complete
     }
 }

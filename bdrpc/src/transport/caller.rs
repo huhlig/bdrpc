@@ -14,139 +14,17 @@
 // limitations under the License.
 //
 
-//! Enhanced transport types for the Transport Manager v0.2.0.
-//!
-//! This module contains new types and traits for the enhanced Transport Manager
-//! that will support multiple transport types, automatic reconnection, and
-//! dynamic transport management.
-//!
-//! **Status:** Phase 1 - Foundation & Design
-//! **Target:** v0.2.0
-
-use crate::channel::ChannelId;
-use crate::reconnection::ReconnectionStrategy;
-use crate::transport::{Transport, TransportError, TransportId};
+use crate::TransportError;
+use crate::transport::strategy::ReconnectionStrategy;
+use crate::transport::{TransportEventHandler, TransportId};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-/// Event handler for transport lifecycle events.
-///
-/// This trait allows the endpoint to respond to transport events such as
-/// connections, disconnections, and channel creation requests.
-///
-/// # Examples
-///
-/// ```rust
-/// use bdrpc::transport::{TransportEventHandler, TransportId};
-/// use bdrpc::channel::ChannelId;
-/// use bdrpc::transport::TransportError;
-///
-/// struct MyEventHandler;
-///
-/// impl TransportEventHandler for MyEventHandler {
-///     fn on_transport_connected(&self, transport_id: TransportId) {
-///         println!("Transport {} connected", transport_id);
-///     }
-///
-///     fn on_transport_disconnected(
-///         &self,
-///         transport_id: TransportId,
-///         error: Option<TransportError>,
-///     ) {
-///         if let Some(err) = error {
-///             eprintln!("Transport {} disconnected with error: {}", transport_id, err);
-///         } else {
-///             println!("Transport {} disconnected gracefully", transport_id);
-///         }
-///     }
-///
-///     fn on_new_channel_request(
-///         &self,
-///         channel_id: ChannelId,
-///         protocol: &str,
-///         transport_id: TransportId,
-///     ) -> Result<bool, String> {
-///         println!(
-///             "Channel {} request for protocol '{}' on transport {}",
-///             channel_id, protocol, transport_id
-///         );
-///         Ok(true) // Accept the channel
-///     }
-/// }
-/// ```
-pub trait TransportEventHandler: Send + Sync {
-    /// Called when a transport successfully connects.
-    ///
-    /// This is invoked for both listener (server) and caller (client) transports
-    /// after the connection is established.
-    fn on_transport_connected(&self, transport_id: TransportId);
-
-    /// Called when a transport disconnects.
-    ///
-    /// The `error` parameter contains the error that caused the disconnection,
-    /// or `None` if the disconnection was graceful.
-    fn on_transport_disconnected(&self, transport_id: TransportId, error: Option<TransportError>);
-
-    /// Called when a new channel creation is requested.
-    ///
-    /// Returns `Ok(true)` to accept the channel, `Ok(false)` to reject it,
-    /// or `Err(reason)` to reject with a specific error message.
-    fn on_new_channel_request(
-        &self,
-        channel_id: ChannelId,
-        protocol: &str,
-        transport_id: TransportId,
-    ) -> Result<bool, String>;
-}
-
-/// Trait for transport listeners (servers).
-///
-/// A transport listener accepts incoming connections. The actual transport type
-/// is determined by the concrete implementation.
-///
-/// # Note
-///
-/// This trait is designed to be implemented by specific transport types
-/// (e.g., `TcpListener`, `TlsListener`) rather than used as a trait object.
-/// The accepted transport type is determined by the implementation.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use bdrpc::transport::TransportListener;
-///
-/// # async fn example<L: TransportListener>(listener: &L) -> Result<(), Box<dyn std::error::Error>> {
-/// // Get listener address
-/// let addr = listener.local_addr()?;
-/// println!("Listening on {}", addr);
-/// # Ok(())
-/// # }
-/// ```
-#[async_trait::async_trait]
-pub trait TransportListener: Send + Sync {
-    /// The type of transport this listener produces
-    type Transport: Transport;
-
-    /// Accepts a new incoming connection.
-    ///
-    /// This method blocks until a new connection is available.
-    async fn accept(&self) -> Result<Self::Transport, TransportError>;
-
-    /// Returns the local address this listener is bound to.
-    #[allow(clippy::result_large_err)]
-    fn local_addr(&self) -> Result<String, TransportError>;
-
-    /// Gracefully shuts down the listener.
-    ///
-    /// After calling this method, no new connections will be accepted.
-    async fn shutdown(&self) -> Result<(), TransportError>;
-}
-
 /// State of a caller transport (client connection).
 ///
 /// This tracks the current state of a client transport, including connection
-/// status and reconnection attempts.
+/// status and strategy attempts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallerState {
     /// Transport is disconnected and not attempting to reconnect
@@ -160,7 +38,7 @@ pub enum CallerState {
 
     /// Transport is attempting to reconnect after a failure
     Reconnecting {
-        /// Number of reconnection attempts made
+        /// Number of strategy attempts made
         attempt: u32,
         /// The error that caused the disconnection
         last_error: String,
@@ -182,16 +60,16 @@ impl std::fmt::Display for CallerState {
     }
 }
 
-/// A caller transport (client) with automatic reconnection support.
+/// A caller transport (client) with automatic strategy support.
 ///
 /// This struct manages a client transport connection, including automatic
-/// reconnection using a configurable reconnection strategy.
+/// strategy using a configurable strategy strategy.
 ///
 /// # Examples
 ///
 /// ```rust
 /// use bdrpc::transport::{CallerTransport, TransportConfig, TransportType};
-/// use bdrpc::reconnection::ExponentialBackoff;
+/// use bdrpc::strategy::ExponentialBackoff;
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -212,7 +90,7 @@ pub struct CallerTransport {
     /// Current connection state
     state: Arc<RwLock<CallerState>>,
 
-    /// Handle to the reconnection task, if running
+    /// Handle to the strategy task, if running
     reconnection_task: Arc<RwLock<Option<JoinHandle<()>>>>,
 }
 
@@ -222,7 +100,7 @@ impl CallerTransport {
     /// # Arguments
     ///
     /// * `name` - Unique name for this caller transport
-    /// * `config` - Configuration including address and reconnection strategy
+    /// * `config` - Configuration including address and strategy strategy
     ///
     /// # Examples
     ///
@@ -261,20 +139,20 @@ impl CallerTransport {
         *self.state.write().await = state;
     }
 
-    /// Checks if this transport has a reconnection strategy configured.
+    /// Checks if this transport has a strategy strategy configured.
     pub fn has_reconnection_strategy(&self) -> bool {
         self.config.reconnection_strategy().is_some()
     }
 
-    /// Returns the reconnection strategy, if configured.
+    /// Returns the strategy strategy, if configured.
     pub fn reconnection_strategy(&self) -> Option<&Arc<dyn ReconnectionStrategy>> {
         self.config.reconnection_strategy()
     }
 
-    /// Starts the automatic reconnection loop for this caller transport.
+    /// Starts the automatic strategy loop for this caller transport.
     ///
     /// This spawns a background task that will continuously attempt to reconnect
-    /// using the configured reconnection strategy. The task will run until
+    /// using the configured strategy strategy. The task will run until
     /// `stop_reconnection_loop()` is called or the transport is disabled.
     ///
     /// # Arguments
@@ -317,7 +195,7 @@ impl CallerTransport {
         F: Fn(String) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = Result<TransportId, TransportError>> + Send,
     {
-        // Stop any existing reconnection loop
+        // Stop any existing strategy loop
         self.stop_reconnection_loop().await;
 
         let config = self.config.clone();
@@ -328,16 +206,13 @@ impl CallerTransport {
             Some(s) => Arc::clone(s),
             None => {
                 #[cfg(feature = "observability")]
-                tracing::warn!(
-                    "Caller '{}' has no reconnection strategy configured",
-                    self.name
-                );
+                tracing::warn!("Caller '{}' has no strategy strategy configured", self.name);
                 return;
             }
         };
 
         #[cfg(feature = "observability")]
-        tracing::info!("Starting reconnection loop for caller '{}'", &self.name);
+        tracing::info!("Starting strategy loop for caller '{}'", &self.name);
 
         #[allow(unused_variables)]
         let name = self.name.clone();
@@ -351,7 +226,7 @@ impl CallerTransport {
                 match current_state {
                     CallerState::Disabled => {
                         #[cfg(feature = "observability")]
-                        tracing::info!("Caller '{}' is disabled, stopping reconnection loop", name);
+                        tracing::info!("Caller '{}' is disabled, stopping strategy loop", name);
                         break;
                     }
                     CallerState::Connected(_) => {
@@ -460,9 +335,9 @@ impl CallerTransport {
         *reconnection_task.write().await = Some(task);
     }
 
-    /// Stops the automatic reconnection loop.
+    /// Stops the automatic strategy loop.
     ///
-    /// This aborts the background reconnection task if it's running.
+    /// This aborts the background strategy task if it's running.
     ///
     /// # Examples
     ///
@@ -473,7 +348,7 @@ impl CallerTransport {
     /// let config = TransportConfig::new(TransportType::Tcp, "127.0.0.1:8080");
     /// let caller = CallerTransport::new("main".to_string(), config);
     ///
-    /// // Later, stop the reconnection loop
+    /// // Later, stop the strategy loop
     /// caller.stop_reconnection_loop().await;
     /// # Ok(())
     /// # }
@@ -482,13 +357,13 @@ impl CallerTransport {
         let mut task_guard = self.reconnection_task.write().await;
         if let Some(task) = task_guard.take() {
             #[cfg(feature = "observability")]
-            tracing::info!("Stopping reconnection loop for caller '{}'", self.name);
+            tracing::info!("Stopping strategy loop for caller '{}'", self.name);
 
             task.abort();
         }
     }
 
-    /// Checks if the reconnection loop is currently running.
+    /// Checks if the strategy loop is currently running.
     pub async fn is_reconnection_loop_running(&self) -> bool {
         self.reconnection_task.read().await.is_some()
     }
@@ -507,118 +382,12 @@ impl std::fmt::Debug for CallerTransport {
     }
 }
 
-/// Represents an active transport connection.
-///
-/// This struct tracks metadata about an active connection, including its
-/// transport ID, type, and associated caller transport (if applicable).
-///
-/// # Examples
-///
-/// ```rust
-/// use bdrpc::transport::{TransportConnection, TransportId, TransportType};
-///
-/// let connection = TransportConnection::new(
-///     TransportId::new(1),
-///     TransportType::Tcp,
-///     Some("main".to_string()),
-/// );
-///
-/// assert_eq!(connection.transport_id().as_u64(), 1);
-/// assert_eq!(connection.transport_type(), TransportType::Tcp);
-/// assert_eq!(connection.caller_name(), Some("main"));
-/// ```
-#[derive(Debug, Clone)]
-pub struct TransportConnection {
-    /// Unique identifier for this connection
-    transport_id: TransportId,
-
-    /// Type of transport protocol
-    transport_type: crate::transport::TransportType,
-
-    /// Name of the caller transport, if this is a client connection
-    caller_name: Option<String>,
-
-    /// When this connection was established
-    connected_at: std::time::Instant,
-}
-
-impl TransportConnection {
-    /// Creates a new transport connection.
-    ///
-    /// # Arguments
-    ///
-    /// * `transport_id` - Unique identifier for this connection
-    /// * `transport_type` - Type of transport protocol
-    /// * `caller_name` - Optional name of the caller transport (for client connections)
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use bdrpc::transport::{TransportConnection, TransportId, TransportType};
-    ///
-    /// // Server connection (no caller name)
-    /// let server_conn = TransportConnection::new(
-    ///     TransportId::new(1),
-    ///     TransportType::Tcp,
-    ///     None,
-    /// );
-    ///
-    /// // Client connection (with caller name)
-    /// let client_conn = TransportConnection::new(
-    ///     TransportId::new(2),
-    ///     TransportType::Tcp,
-    ///     Some("main".to_string()),
-    /// );
-    /// ```
-    pub fn new(
-        transport_id: TransportId,
-        transport_type: crate::transport::TransportType,
-        caller_name: Option<String>,
-    ) -> Self {
-        Self {
-            transport_id,
-            transport_type,
-            caller_name,
-            connected_at: std::time::Instant::now(),
-        }
-    }
-
-    /// Returns the transport ID.
-    pub fn transport_id(&self) -> TransportId {
-        self.transport_id
-    }
-
-    /// Returns the transport type.
-    pub fn transport_type(&self) -> crate::transport::TransportType {
-        self.transport_type
-    }
-
-    /// Returns the caller name, if this is a client connection.
-    pub fn caller_name(&self) -> Option<&str> {
-        self.caller_name.as_deref()
-    }
-
-    /// Returns how long this connection has been active.
-    pub fn uptime(&self) -> std::time::Duration {
-        self.connected_at.elapsed()
-    }
-
-    /// Checks if this is a client connection (has a caller name).
-    pub fn is_client(&self) -> bool {
-        self.caller_name.is_some()
-    }
-
-    /// Checks if this is a server connection (no caller name).
-    pub fn is_server(&self) -> bool {
-        self.caller_name.is_none()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reconnection::ExponentialBackoff;
+    use crate::transport::TransportId;
     use crate::transport::TransportType;
+    use crate::transport::strategy::ExponentialBackoff;
 
     #[test]
     fn test_caller_state_display() {
@@ -676,40 +445,4 @@ mod tests {
         caller.set_state(CallerState::Connected(transport_id)).await;
         assert_eq!(caller.state().await, CallerState::Connected(transport_id));
     }
-
-    #[test]
-    fn test_transport_connection_new() {
-        let conn = TransportConnection::new(
-            TransportId::new(1),
-            TransportType::Tcp,
-            Some("main".to_string()),
-        );
-
-        assert_eq!(conn.transport_id().as_u64(), 1);
-        assert_eq!(conn.transport_type(), TransportType::Tcp);
-        assert_eq!(conn.caller_name(), Some("main"));
-        assert!(conn.is_client());
-        assert!(!conn.is_server());
-    }
-
-    #[test]
-    fn test_transport_connection_server() {
-        let conn = TransportConnection::new(TransportId::new(2), TransportType::Tcp, None);
-
-        assert_eq!(conn.caller_name(), None);
-        assert!(!conn.is_client());
-        assert!(conn.is_server());
-    }
-
-    #[test]
-    fn test_transport_connection_uptime() {
-        let conn = TransportConnection::new(TransportId::new(1), TransportType::Tcp, None);
-
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        let uptime = conn.uptime();
-        assert!(uptime.as_millis() >= 10);
-    }
 }
-
-// Made with Bob

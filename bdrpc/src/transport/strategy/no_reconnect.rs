@@ -1,4 +1,4 @@
-//! No reconnection strategy.
+//! No strategy strategy.
 //!
 //! This strategy immediately gives up on connection failures without attempting
 //! to reconnect. Useful for testing or one-shot connections.
@@ -9,18 +9,18 @@ use async_trait::async_trait;
 use std::sync::Mutex;
 use std::time::Duration;
 
-/// No reconnection strategy.
+/// No strategy strategy.
 ///
 /// This strategy never attempts to reconnect after a connection failure.
 /// It's useful for:
-/// - Testing scenarios where reconnection should not occur
+/// - Testing scenarios where strategy should not occur
 /// - One-shot connections that should fail immediately
 /// - Situations where manual intervention is required
 ///
 /// # Examples
 ///
 /// ```
-/// use bdrpc::reconnection::NoReconnect;
+/// use bdrpc::strategy::NoReconnect;
 ///
 /// let strategy = NoReconnect::new();
 /// ```

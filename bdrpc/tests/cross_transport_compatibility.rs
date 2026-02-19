@@ -32,7 +32,7 @@ use tokio::time::timeout;
 /// Test that TCP transport works with BDRPC framing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_tcp_transport_framing() {
-    use bdrpc::transport::TcpTransport;
+    use bdrpc::transport::provider::TcpTransport;
 
     let listener = TcpTransport::bind("127.0.0.1:0")
         .await

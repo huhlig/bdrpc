@@ -1,4 +1,4 @@
-//! Circuit breaker reconnection strategy.
+//! Circuit breaker strategy strategy.
 //!
 //! This strategy implements the circuit breaker pattern to prevent repeated
 //! connection attempts when the remote service is unavailable.
@@ -20,17 +20,17 @@ pub enum CircuitState {
     HalfOpen,
 }
 
-/// Circuit breaker reconnection strategy.
+/// Circuit breaker strategy strategy.
 ///
 /// This strategy implements the circuit breaker pattern:
-/// - **Closed**: Normal operation, attempts reconnection
+/// - **Closed**: Normal operation, attempts strategy
 /// - **Open**: After threshold failures, stops attempting for a timeout period
 /// - **Half-Open**: After timeout, allows limited attempts to test recovery
 ///
 /// # Examples
 ///
 /// ```
-/// use bdrpc::reconnection::CircuitBreaker;
+/// use bdrpc::strategy::CircuitBreaker;
 /// use std::time::Duration;
 ///
 /// // Default configuration

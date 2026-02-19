@@ -19,7 +19,7 @@
 //! These tests verify the new transport management features including:
 //! - Multiple transport types (TCP, Memory, TLS)
 //! - Listener and caller transport management
-//! - Automatic reconnection with various strategies
+//! - Automatic strategy with various strategies
 //! - Transport enable/disable functionality
 //! - Multiple simultaneous transports
 
@@ -31,9 +31,12 @@ fn init() {
 
 use bdrpc::channel::Protocol;
 use bdrpc::endpoint::EndpointBuilder;
-use bdrpc::reconnection::{CircuitBreaker, ExponentialBackoff, FixedDelay};
 use bdrpc::serialization::PostcardSerializer;
-use bdrpc::transport::{TcpTransport, TransportConfig, TransportType};
+use bdrpc::transport::{
+    TransportConfig, TransportType,
+    provider::TcpTransport,
+    strategy::{CircuitBreaker, ExponentialBackoff, FixedDelay},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -93,7 +96,7 @@ async fn test_multiple_tcp_listeners() {
     drop(server);
 }
 
-/// Test TCP caller with reconnection strategy.
+/// Test TCP caller with strategy strategy.
 #[tokio::test]
 async fn test_tcp_caller_with_reconnection() {
     // Start a server
@@ -111,7 +114,7 @@ async fn test_tcp_caller_with_reconnection() {
         }
     });
 
-    // Create client with reconnection
+    // Create client with strategy
     let reconnection = Arc::new(
         ExponentialBackoff::builder()
             .initial_delay(Duration::from_millis(10))
@@ -138,10 +141,10 @@ async fn test_tcp_caller_with_reconnection() {
     server_handle.await.expect("Server task panicked");
 }
 
-/// Test reconnection with exponential backoff strategy.
+/// Test strategy with exponential backoff strategy.
 #[tokio::test]
 async fn test_reconnection_exponential_backoff() {
-    use bdrpc::reconnection::ReconnectionStrategy;
+    use bdrpc::transport::strategy::ReconnectionStrategy;
 
     let strategy = ExponentialBackoff::builder()
         .initial_delay(Duration::from_millis(10))
@@ -166,10 +169,10 @@ async fn test_reconnection_exponential_backoff() {
     assert_eq!(delays[4], Duration::from_millis(100)); // Capped at max
 }
 
-/// Test reconnection with circuit breaker strategy.
+/// Test strategy with circuit breaker strategy.
 #[tokio::test]
 async fn test_reconnection_circuit_breaker() {
-    use bdrpc::reconnection::ReconnectionStrategy;
+    use bdrpc::transport::strategy::ReconnectionStrategy;
 
     let strategy = CircuitBreaker::builder()
         .failure_threshold(3)
@@ -185,10 +188,10 @@ async fn test_reconnection_circuit_breaker() {
     // Circuit breaker should provide delays based on its state
 }
 
-/// Test reconnection with fixed delay strategy.
+/// Test strategy with fixed delay strategy.
 #[tokio::test]
 async fn test_reconnection_fixed_delay() {
-    use bdrpc::reconnection::ReconnectionStrategy;
+    use bdrpc::transport::strategy::ReconnectionStrategy;
 
     let strategy = FixedDelay::builder()
         .delay(Duration::from_millis(50))
@@ -462,7 +465,7 @@ fn test_transport_config_builder() {
     assert_eq!(config.metadata().len(), 2);
 }
 
-/// Test transport config with reconnection strategy.
+/// Test transport config with strategy strategy.
 #[test]
 fn test_transport_config_with_reconnection() {
     let strategy = Arc::new(ExponentialBackoff::default());

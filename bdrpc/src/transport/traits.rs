@@ -14,91 +14,9 @@
 // limitations under the License.
 //
 
-//! Core transport trait definitions.
-//!
-//! This module defines the [`Transport`] trait, which is the foundation of
-//! BDRPC's transport layer abstraction.
-
-use std::fmt;
-use std::net::SocketAddr;
+use crate::transport::{TransportId, TransportMetadata};
+use crate::{ChannelId, TransportError};
 use tokio::io::{AsyncRead, AsyncWrite};
-
-/// Unique identifier for a transport connection.
-///
-/// Transport IDs are used to track and manage individual transport instances
-/// within the transport manager.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TransportId(u64);
-
-impl TransportId {
-    /// Creates a new transport ID.
-    pub fn new(id: u64) -> Self {
-        Self(id)
-    }
-
-    /// Returns the raw ID value.
-    pub fn as_u64(&self) -> u64 {
-        self.0
-    }
-}
-
-impl fmt::Display for TransportId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Transport({})", self.0)
-    }
-}
-
-/// Metadata associated with a transport connection.
-///
-/// This provides information about the transport that can be used for
-/// logging, metrics, and debugging.
-#[derive(Debug, Clone)]
-pub struct TransportMetadata {
-    /// Unique identifier for this transport
-    pub id: TransportId,
-
-    /// Local address of the connection, if available
-    pub local_addr: Option<SocketAddr>,
-
-    /// Remote peer address, if available
-    pub peer_addr: Option<SocketAddr>,
-
-    /// Transport type (e.g., "tcp", "memory", "tls")
-    pub transport_type: String,
-
-    /// When the transport was created
-    pub created_at: std::time::Instant,
-}
-
-impl TransportMetadata {
-    /// Creates new transport metadata.
-    pub fn new(id: TransportId, transport_type: impl Into<String>) -> Self {
-        Self {
-            id,
-            local_addr: None,
-            peer_addr: None,
-            transport_type: transport_type.into(),
-            created_at: std::time::Instant::now(),
-        }
-    }
-
-    /// Sets the local address.
-    pub fn with_local_addr(mut self, addr: SocketAddr) -> Self {
-        self.local_addr = Some(addr);
-        self
-    }
-
-    /// Sets the peer address.
-    pub fn with_peer_addr(mut self, addr: SocketAddr) -> Self {
-        self.peer_addr = Some(addr);
-        self
-    }
-
-    /// Returns the age of this transport.
-    pub fn age(&self) -> std::time::Duration {
-        self.created_at.elapsed()
-    }
-}
 
 /// Core transport abstraction for bi-directional byte streams.
 ///
@@ -315,55 +233,115 @@ pub trait Transport: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Trait for transport listeners (servers).
+///
+/// A transport listener accepts incoming connections. The actual transport type
+/// is determined by the concrete implementation.
+///
+/// # Note
+///
+/// This trait is designed to be implemented by specific transport types
+/// (e.g., `TcpListener`, `TlsListener`) rather than used as a trait object.
+/// The accepted transport type is determined by the implementation.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use bdrpc::transport::TransportListener;
+///
+/// # async fn example<L: TransportListener>(listener: &L) -> Result<(), Box<dyn std::error::Error>> {
+/// // Get listener address
+/// let addr = listener.local_addr()?;
+/// println!("Listening on {}", addr);
+/// # Ok(())
+/// # }
+/// ```
+#[async_trait::async_trait]
+pub trait TransportListener: Send + Sync {
+    /// The type of transport this listener produces
+    type Transport: Transport;
 
-    #[test]
-    fn test_transport_id_creation() {
-        let id = TransportId::new(42);
-        assert_eq!(id.as_u64(), 42);
-    }
+    /// Accepts a new incoming connection.
+    ///
+    /// This method blocks until a new connection is available.
+    async fn accept(&self) -> Result<Self::Transport, TransportError>;
 
-    #[test]
-    fn test_transport_id_display() {
-        let id = TransportId::new(123);
-        assert_eq!(format!("{}", id), "Transport(123)");
-    }
+    /// Returns the local address this listener is bound to.
+    #[allow(clippy::result_large_err)]
+    fn local_addr(&self) -> Result<String, TransportError>;
 
-    #[test]
-    fn test_transport_metadata_creation() {
-        let id = TransportId::new(1);
-        let metadata = TransportMetadata::new(id, "test");
+    /// Gracefully shuts down the listener.
+    ///
+    /// After calling this method, no new connections will be accepted.
+    async fn shutdown(&self) -> Result<(), TransportError>;
+}
 
-        assert_eq!(metadata.id, id);
-        assert_eq!(metadata.transport_type, "test");
-        assert!(metadata.local_addr.is_none());
-        assert!(metadata.peer_addr.is_none());
-    }
+/// Event handler for transport lifecycle events.
+///
+/// This trait allows the endpoint to respond to transport events such as
+/// connections, disconnections, and channel creation requests.
+///
+/// # Examples
+///
+/// ```rust
+/// use bdrpc::transport::{TransportEventHandler, TransportId};
+/// use bdrpc::channel::ChannelId;
+/// use bdrpc::transport::TransportError;
+///
+/// struct MyEventHandler;
+///
+/// impl TransportEventHandler for MyEventHandler {
+///     fn on_transport_connected(&self, transport_id: TransportId) {
+///         println!("Transport {} connected", transport_id);
+///     }
+///
+///     fn on_transport_disconnected(
+///         &self,
+///         transport_id: TransportId,
+///         error: Option<TransportError>,
+///     ) {
+///         if let Some(err) = error {
+///             eprintln!("Transport {} disconnected with error: {}", transport_id, err);
+///         } else {
+///             println!("Transport {} disconnected gracefully", transport_id);
+///         }
+///     }
+///
+///     fn on_new_channel_request(
+///         &self,
+///         channel_id: ChannelId,
+///         protocol: &str,
+///         transport_id: TransportId,
+///     ) -> Result<bool, String> {
+///         println!(
+///             "Channel {} request for protocol '{}' on transport {}",
+///             channel_id, protocol, transport_id
+///         );
+///         Ok(true) // Accept the channel
+///     }
+/// }
+/// ```
+pub trait TransportEventHandler: Send + Sync {
+    /// Called when a transport successfully connects.
+    ///
+    /// This is invoked for both listener (server) and caller (client) transports
+    /// after the connection is established.
+    fn on_transport_connected(&self, transport_id: TransportId);
 
-    #[test]
-    fn test_transport_metadata_with_addresses() {
-        let id = TransportId::new(1);
-        let local = "127.0.0.1:8080".parse().unwrap();
-        let peer = "127.0.0.1:9090".parse().unwrap();
+    /// Called when a transport disconnects.
+    ///
+    /// The `error` parameter contains the error that caused the disconnection,
+    /// or `None` if the disconnection was graceful.
+    fn on_transport_disconnected(&self, transport_id: TransportId, error: Option<TransportError>);
 
-        let metadata = TransportMetadata::new(id, "test")
-            .with_local_addr(local)
-            .with_peer_addr(peer);
-
-        assert_eq!(metadata.local_addr, Some(local));
-        assert_eq!(metadata.peer_addr, Some(peer));
-    }
-
-    #[test]
-    fn test_transport_metadata_age() {
-        let id = TransportId::new(1);
-        let metadata = TransportMetadata::new(id, "test");
-
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        let age = metadata.age();
-        assert!(age.as_millis() >= 10);
-    }
+    /// Called when a new channel creation is requested.
+    ///
+    /// Returns `Ok(true)` to accept the channel, `Ok(false)` to reject it,
+    /// or `Err(reason)` to reject with a specific error message.
+    fn on_new_channel_request(
+        &self,
+        channel_id: ChannelId,
+        protocol: &str,
+        transport_id: TransportId,
+    ) -> Result<bool, String>;
 }

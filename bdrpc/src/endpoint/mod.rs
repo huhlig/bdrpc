@@ -29,7 +29,7 @@
 //! - **Channel Creation**: Create typed channels for type-safe communication
 //! - **Handshake Protocol**: Negotiate capabilities and versions with peers
 //! - **Bi-directional Support**: Act as client, server, or peer simultaneously
-//! - **Reconnection**: Automatic reconnection with configurable strategies
+//! - **Reconnection**: Automatic strategy with configurable strategies
 //!
 //! # Architecture
 //!
@@ -183,7 +183,7 @@
 //!
 //! ```rust
 //! use bdrpc::endpoint::EndpointConfig;
-//! use bdrpc::reconnection::{ExponentialBackoff, ReconnectionStrategy};
+//! use bdrpc::strategy::{ExponentialBackoff, ReconnectionStrategy};
 //! use std::sync::Arc;
 //! use std::time::Duration;
 //!
@@ -209,7 +209,7 @@
 //! ```rust,no_run
 //! use bdrpc::endpoint::{Endpoint, EndpointConfig};
 //! use bdrpc::serialization::PostcardSerializer;
-//! use bdrpc::reconnection::ExponentialBackoff;
+//! use bdrpc::strategy::ExponentialBackoff;
 //! use std::sync::Arc;
 //! use std::time::Duration;
 //!
@@ -226,7 +226,7 @@
 //!
 //! let mut endpoint = Endpoint::new(PostcardSerializer::default(), config);
 //!
-//! // Connect with automatic reconnection
+//! // Connect with automatic strategy
 //! let connection = endpoint.connect_with_reconnection("127.0.0.1:8080").await?;
 //!
 //! // Connection will automatically reconnect on failure
@@ -344,7 +344,7 @@
 //! - [ADR-010: Dynamic Channel Negotiation](../adr/ADR-010-dynamic-channel-negotiation.md)
 //! - [`transport`](crate::transport) - Transport layer
 //! - [`channel`](crate::channel) - Channel layer
-//! - [`reconnection`](crate::reconnection) - Reconnection strategies
+//! - [`strategy`](crate::strategy) - Reconnection strategies
 
 mod builder;
 mod config;

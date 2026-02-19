@@ -17,9 +17,9 @@
 //! Transport configuration types for the enhanced Transport Manager.
 //!
 //! This module provides configuration types for managing multiple transports,
-//! including listeners (servers) and callers (clients) with automatic reconnection.
+//! including listeners (servers) and callers (clients) with automatic strategy.
 
-use crate::reconnection::ReconnectionStrategy;
+use crate::transport::strategy::ReconnectionStrategy;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -100,7 +100,7 @@ impl std::fmt::Display for TransportType {
 /// Configuration for a transport (listener or caller).
 ///
 /// This struct contains all the information needed to configure and manage
-/// a transport connection, including the transport type, address, reconnection
+/// a transport connection, including the transport type, address, strategy
 /// strategy, and custom metadata.
 ///
 /// # Examples
@@ -119,7 +119,7 @@ impl std::fmt::Display for TransportType {
 ///
 /// ```rust
 /// use bdrpc::transport::{TransportConfig, TransportType};
-/// use bdrpc::reconnection::ExponentialBackoff;
+/// use bdrpc::strategy::ExponentialBackoff;
 /// use std::sync::Arc;
 ///
 /// let strategy = Arc::new(ExponentialBackoff::default());
@@ -135,7 +135,7 @@ pub struct TransportConfig {
     /// Address to bind (listener) or connect to (caller)
     address: String,
 
-    /// Optional reconnection strategy for callers
+    /// Optional strategy strategy for callers
     reconnection_strategy: Option<Arc<dyn ReconnectionStrategy>>,
 
     /// Whether this transport is enabled
@@ -170,16 +170,16 @@ impl TransportConfig {
         }
     }
 
-    /// Sets the reconnection strategy for this transport.
+    /// Sets the strategy strategy for this transport.
     ///
     /// This is typically used for caller transports to enable automatic
-    /// reconnection on connection failure.
+    /// strategy on connection failure.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use bdrpc::transport::{TransportConfig, TransportType};
-    /// use bdrpc::reconnection::ExponentialBackoff;
+    /// use bdrpc::strategy::ExponentialBackoff;
     /// use std::sync::Arc;
     ///
     /// let strategy = Arc::new(ExponentialBackoff::default());
@@ -239,7 +239,7 @@ impl TransportConfig {
         &self.address
     }
 
-    /// Returns the reconnection strategy, if any.
+    /// Returns the strategy strategy, if any.
     pub fn reconnection_strategy(&self) -> Option<&Arc<dyn ReconnectionStrategy>> {
         self.reconnection_strategy.as_ref()
     }
@@ -278,7 +278,7 @@ impl std::fmt::Debug for TransportConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reconnection::ExponentialBackoff;
+    use crate::transport::strategy::ExponentialBackoff;
 
     #[test]
     fn test_transport_type_as_str() {

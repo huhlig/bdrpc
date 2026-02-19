@@ -1,4 +1,4 @@
-//! Exponential backoff reconnection strategy.
+//! Exponential backoff strategy strategy.
 //!
 //! This strategy implements exponential backoff with optional jitter to prevent
 //! thundering herd problems.
@@ -9,15 +9,15 @@ use async_trait::async_trait;
 use std::sync::Mutex;
 use std::time::Duration;
 
-/// Exponential backoff reconnection strategy.
+/// Exponential backoff strategy strategy.
 ///
-/// This strategy increases the delay between reconnection attempts exponentially,
+/// This strategy increases the delay between strategy attempts exponentially,
 /// with optional jitter to prevent thundering herd problems.
 ///
 /// # Examples
 ///
 /// ```
-/// use bdrpc::reconnection::ExponentialBackoff;
+/// use bdrpc::strategy::ExponentialBackoff;
 /// use std::time::Duration;
 ///
 /// // Default configuration

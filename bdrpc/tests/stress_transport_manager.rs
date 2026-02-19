@@ -3,9 +3,8 @@
 //! These tests validate the transport manager's behavior under high load,
 //! focusing on the TransportManager API itself.
 
-use bdrpc::{
-    reconnection::ExponentialBackoff,
-    transport::{TransportConfig, TransportManager, TransportType},
+use bdrpc::transport::{
+    TransportConfig, TransportManager, TransportType, strategy::ExponentialBackoff,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -51,7 +50,7 @@ async fn stress_test_listener_management() {
 async fn stress_test_caller_management() {
     let manager = TransportManager::new();
 
-    // Add 100 callers with reconnection strategies
+    // Add 100 callers with strategy strategies
     for i in 0..100 {
         let config = TransportConfig::new(TransportType::Tcp, format!("127.0.0.1:{}", 21000 + i))
             .with_reconnection_strategy(Arc::new(ExponentialBackoff::default()));

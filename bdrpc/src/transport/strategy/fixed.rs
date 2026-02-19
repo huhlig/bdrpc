@@ -1,6 +1,6 @@
-//! Fixed delay reconnection strategy.
+//! Fixed delay strategy strategy.
 //!
-//! This strategy uses a constant delay between reconnection attempts.
+//! This strategy uses a constant delay between strategy attempts.
 
 use super::traits::{ReconnectionMetrics, ReconnectionStrategy};
 use crate::transport::TransportError;
@@ -8,15 +8,15 @@ use async_trait::async_trait;
 use std::sync::Mutex;
 use std::time::Duration;
 
-/// Fixed delay reconnection strategy.
+/// Fixed delay strategy strategy.
 ///
-/// This strategy waits a constant amount of time between reconnection attempts.
+/// This strategy waits a constant amount of time between strategy attempts.
 /// It's useful for predictable retry patterns.
 ///
 /// # Examples
 ///
 /// ```
-/// use bdrpc::reconnection::FixedDelay;
+/// use bdrpc::strategy::FixedDelay;
 /// use std::time::Duration;
 ///
 /// // Default configuration (1 second delay)
@@ -30,7 +30,7 @@ use std::time::Duration;
 /// ```
 #[derive(Debug)]
 pub struct FixedDelay {
-    /// Delay between reconnection attempts
+    /// Delay between strategy attempts
     delay: Duration,
     /// Maximum number of attempts (None = unlimited)
     max_attempts: Option<u32>,
@@ -133,7 +133,7 @@ impl Default for FixedDelayBuilder {
 }
 
 impl FixedDelayBuilder {
-    /// Set the delay between reconnection attempts.
+    /// Set the delay between strategy attempts.
     pub fn delay(mut self, delay: Duration) -> Self {
         self.delay = delay;
         self

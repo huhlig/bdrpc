@@ -67,6 +67,7 @@
 //! # }
 //! ```
 
+use crate::channel::ChannelId;
 use crate::serialization::{BufferPool, DeserializationError, SerializationError};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -76,8 +77,14 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// size of a single message. Adjust this value based on your application's needs.
 pub const MAX_FRAME_SIZE: u32 = 16 * 1024 * 1024;
 
-/// Size of the frame length header in bytes.
+/// Size of the frame length header in bytes (4 bytes for length).
 pub const FRAME_HEADER_SIZE: usize = 4;
+
+/// Size of the channel ID in bytes (8 bytes for u64).
+pub const CHANNEL_ID_SIZE: usize = 8;
+
+/// Total frame header size (channel ID + length).
+pub const TOTAL_FRAME_HEADER_SIZE: usize = CHANNEL_ID_SIZE + FRAME_HEADER_SIZE;
 
 /// Writes a length-prefixed frame to an async writer.
 ///
@@ -295,6 +302,397 @@ where
 {
     let payload = read_frame(reader).await?;
     serializer.deserialize(&payload)
+}
+
+/// Writes a frame with channel ID prefix.
+///
+/// This function writes a complete frame with channel multiplexing support:
+/// - Channel ID (8 bytes, big-endian u64)
+/// - Length prefix (4 bytes, big-endian u32)
+/// - Payload (N bytes)
+///
+/// # Errors
+///
+/// Returns a [`SerializationError`] if:
+/// - The payload exceeds [`MAX_FRAME_SIZE`]
+/// - Writing to the writer fails
+///
+/// # Examples
+///
+/// ```rust
+/// use bdrpc::channel::ChannelId;
+/// use bdrpc::serialization::framing::write_frame_with_channel;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut buffer = Vec::new();
+/// let channel_id = ChannelId::from(42);
+/// let message = b"Hello, world!";
+///
+/// write_frame_with_channel(&mut buffer, channel_id, message).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub async fn write_frame_with_channel<W>(
+    writer: &mut W,
+    channel_id: ChannelId,
+    payload: &[u8],
+) -> Result<(), SerializationError>
+where
+    W: AsyncWrite + Unpin,
+{
+    // Write channel ID (8 bytes, big-endian)
+    let channel_id_bytes = channel_id.as_u64().to_be_bytes();
+    writer
+        .write_all(&channel_id_bytes)
+        .await
+        .map_err(|e| SerializationError::with_source("Failed to write channel ID", e))?;
+
+    // Write frame (length + payload)
+    write_frame(writer, payload).await
+}
+
+/// Reads a frame with channel ID prefix.
+///
+/// This function reads a complete frame with channel multiplexing support:
+/// - Channel ID (8 bytes, big-endian u64)
+/// - Length prefix (4 bytes, big-endian u32)
+/// - Payload (N bytes)
+///
+/// # Errors
+///
+/// Returns a [`DeserializationError`] if:
+/// - The length prefix indicates a size exceeding [`MAX_FRAME_SIZE`]
+/// - Reading from the reader fails
+/// - The connection is closed before the full frame is received
+///
+/// # Examples
+///
+/// ```rust
+/// use bdrpc::channel::ChannelId;
+/// use bdrpc::serialization::framing::read_frame_with_channel;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // Create a framed message with channel ID
+/// let mut data = Vec::new();
+/// data.extend_from_slice(&42u64.to_be_bytes()); // Channel ID: 42
+/// data.extend_from_slice(&5u32.to_be_bytes());  // Length: 5
+/// data.extend_from_slice(b"Hello");             // Payload
+///
+/// let mut reader = &data[..];
+/// let (channel_id, message) = read_frame_with_channel(&mut reader).await?;
+/// assert_eq!(channel_id.as_u64(), 42);
+/// assert_eq!(message, b"Hello");
+/// # Ok(())
+/// # }
+/// ```
+pub async fn read_frame_with_channel<R>(
+    reader: &mut R,
+) -> Result<(ChannelId, Vec<u8>), DeserializationError>
+where
+    R: AsyncRead + Unpin,
+{
+    // Read channel ID (8 bytes, big-endian)
+    let mut channel_id_bytes = [0u8; CHANNEL_ID_SIZE];
+    reader
+        .read_exact(&mut channel_id_bytes)
+        .await
+        .map_err(|e| DeserializationError::with_source("Failed to read channel ID", e))?;
+
+    let channel_id = ChannelId::from(u64::from_be_bytes(channel_id_bytes));
+
+    // Read frame payload
+    let payload = read_frame(reader).await?;
+
+    Ok((channel_id, payload))
+}
+
+/// Frame structure for multiplexing channels over a transport.
+///
+/// Each frame contains a channel ID and a payload, allowing multiple
+/// logical channels to share a single physical transport connection.
+///
+/// # Frame Format
+///
+/// ```text
+/// +------------------+------------------+------------------+
+/// | Channel ID (8)   | Length (4)       | Payload (N)      |
+/// +------------------+------------------+------------------+
+/// ```
+///
+/// - **Channel ID**: u64 in big-endian format (8 bytes)
+/// - **Length**: u32 in big-endian format (4 bytes)
+/// - **Payload**: Serialized message (N bytes)
+///
+/// # Examples
+///
+/// ```rust
+/// use bdrpc::channel::ChannelId;
+/// use bdrpc::serialization::framing::Frame;
+///
+/// let channel_id = ChannelId::from(42);
+/// let payload = vec![1, 2, 3, 4, 5];
+/// let frame = Frame::new(channel_id, payload);
+///
+/// assert_eq!(frame.channel_id(), channel_id);
+/// assert_eq!(frame.payload(), &[1, 2, 3, 4, 5]);
+/// ```
+#[derive(Debug, Clone)]
+pub struct Frame {
+    /// Channel ID this frame belongs to
+    channel_id: ChannelId,
+    /// Serialized message payload
+    payload: Vec<u8>,
+}
+
+impl Frame {
+    /// Creates a new frame.
+    ///
+    /// # Arguments
+    ///
+    /// * `channel_id` - The channel this frame belongs to
+    /// * `payload` - The serialized message payload
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::channel::ChannelId;
+    /// use bdrpc::serialization::framing::Frame;
+    ///
+    /// let frame = Frame::new(ChannelId::from(1), vec![1, 2, 3]);
+    /// ```
+    pub fn new(channel_id: ChannelId, payload: Vec<u8>) -> Self {
+        Self {
+            channel_id,
+            payload,
+        }
+    }
+
+    /// Gets the channel ID.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::channel::ChannelId;
+    /// use bdrpc::serialization::framing::Frame;
+    ///
+    /// let channel_id = ChannelId::from(42);
+    /// let frame = Frame::new(channel_id, vec![]);
+    /// assert_eq!(frame.channel_id(), channel_id);
+    /// ```
+    pub fn channel_id(&self) -> ChannelId {
+        self.channel_id
+    }
+
+    /// Gets the payload.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::channel::ChannelId;
+    /// use bdrpc::serialization::framing::Frame;
+    ///
+    /// let payload = vec![1, 2, 3];
+    /// let frame = Frame::new(ChannelId::from(1), payload.clone());
+    /// assert_eq!(frame.payload(), &payload[..]);
+    /// ```
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    /// Encodes the frame to bytes for transport.
+    ///
+    /// The format is: [channel_id: 8 bytes][payload_len: 4 bytes][payload: N bytes]
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::channel::ChannelId;
+    /// use bdrpc::serialization::framing::Frame;
+    ///
+    /// let frame = Frame::new(ChannelId::from(42), vec![1, 2, 3]);
+    /// let encoded = frame.encode();
+    /// assert_eq!(encoded.len(), 8 + 4 + 3); // channel_id + length + payload
+    /// ```
+    pub fn encode(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(TOTAL_FRAME_HEADER_SIZE + self.payload.len());
+
+        // Write channel ID (8 bytes, big-endian)
+        bytes.extend_from_slice(&self.channel_id.as_u64().to_be_bytes());
+
+        // Write payload length (4 bytes, big-endian)
+        bytes.extend_from_slice(&(self.payload.len() as u32).to_be_bytes());
+
+        // Write payload
+        bytes.extend_from_slice(&self.payload);
+
+        bytes
+    }
+
+    /// Decodes a frame from bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The bytes are too short to contain a valid frame
+    /// - The payload length is invalid
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bdrpc::channel::ChannelId;
+    /// use bdrpc::serialization::framing::Frame;
+    ///
+    /// let original = Frame::new(ChannelId::from(42), vec![1, 2, 3]);
+    /// let encoded = original.encode();
+    /// let decoded = Frame::decode(&encoded).unwrap();
+    /// assert_eq!(decoded.channel_id(), original.channel_id());
+    /// assert_eq!(decoded.payload(), original.payload());
+    /// ```
+    pub fn decode(bytes: &[u8]) -> Result<Self, DeserializationError> {
+        if bytes.len() < TOTAL_FRAME_HEADER_SIZE {
+            return Err(DeserializationError::new(format!(
+                "Frame too short: expected at least {} bytes, got {}",
+                TOTAL_FRAME_HEADER_SIZE,
+                bytes.len()
+            )));
+        }
+
+        // Read channel ID (8 bytes)
+        let channel_id_bytes: [u8; 8] = bytes[0..8]
+            .try_into()
+            .map_err(|e| DeserializationError::new(format!("Failed to read channel ID: {}", e)))?;
+        let channel_id = ChannelId::from(u64::from_be_bytes(channel_id_bytes));
+
+        // Read payload length (4 bytes)
+        let len_bytes: [u8; 4] = bytes[8..12]
+            .try_into()
+            .map_err(|e| DeserializationError::new(format!("Failed to read length: {}", e)))?;
+        let payload_len = u32::from_be_bytes(len_bytes) as usize;
+
+        // Validate payload length
+        if bytes.len() < TOTAL_FRAME_HEADER_SIZE + payload_len {
+            return Err(DeserializationError::new(format!(
+                "Incomplete frame: expected {} bytes, got {}",
+                TOTAL_FRAME_HEADER_SIZE + payload_len,
+                bytes.len()
+            )));
+        }
+
+        // Read payload
+        let payload =
+            bytes[TOTAL_FRAME_HEADER_SIZE..TOTAL_FRAME_HEADER_SIZE + payload_len].to_vec();
+
+        Ok(Self {
+            channel_id,
+            payload,
+        })
+    }
+
+    /// Writes a frame to an async writer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails or the payload exceeds MAX_FRAME_SIZE.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::channel::ChannelId;
+    /// use bdrpc::serialization::framing::Frame;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let frame = Frame::new(ChannelId::from(1), vec![1, 2, 3]);
+    /// let mut buffer = Vec::new();
+    /// frame.write_to(&mut buffer).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn write_to<W>(&self, writer: &mut W) -> Result<(), SerializationError>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        if self.payload.len() > MAX_FRAME_SIZE as usize {
+            return Err(SerializationError::new(format!(
+                "Frame payload size {} exceeds maximum allowed size {}",
+                self.payload.len(),
+                MAX_FRAME_SIZE
+            )));
+        }
+
+        let encoded = self.encode();
+        writer
+            .write_all(&encoded)
+            .await
+            .map_err(|e| SerializationError::with_source("Failed to write frame", e))?;
+
+        writer
+            .flush()
+            .await
+            .map_err(|e| SerializationError::with_source("Failed to flush frame", e))?;
+
+        Ok(())
+    }
+
+    /// Reads a frame from an async reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading fails or the frame is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use bdrpc::channel::ChannelId;
+    /// use bdrpc::serialization::framing::Frame;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let mut reader = &b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x03\x01\x02\x03"[..];
+    /// let frame = Frame::read_from(&mut reader).await?;
+    /// println!("Received frame for channel {}", frame.channel_id());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn read_from<R>(reader: &mut R) -> Result<Self, DeserializationError>
+    where
+        R: AsyncRead + Unpin,
+    {
+        // Read channel ID (8 bytes)
+        let mut channel_id_bytes = [0u8; CHANNEL_ID_SIZE];
+        reader
+            .read_exact(&mut channel_id_bytes)
+            .await
+            .map_err(|e| DeserializationError::with_source("Failed to read channel ID", e))?;
+        let channel_id = ChannelId::from(u64::from_be_bytes(channel_id_bytes));
+
+        // Read payload length (4 bytes)
+        let mut len_bytes = [0u8; FRAME_HEADER_SIZE];
+        reader
+            .read_exact(&mut len_bytes)
+            .await
+            .map_err(|e| DeserializationError::with_source("Failed to read frame length", e))?;
+        let payload_len = u32::from_be_bytes(len_bytes);
+
+        // Validate length
+        if payload_len > MAX_FRAME_SIZE {
+            return Err(DeserializationError::new(format!(
+                "Frame payload size {} exceeds maximum allowed size {}",
+                payload_len, MAX_FRAME_SIZE
+            )));
+        }
+
+        // Read payload
+        let mut payload = BufferPool::get(payload_len as usize);
+        payload.resize(payload_len as usize);
+        reader
+            .read_exact(&mut payload)
+            .await
+            .map_err(|e| DeserializationError::with_source("Failed to read frame payload", e))?;
+
+        Ok(Self {
+            channel_id,
+            payload: payload.into(),
+        })
+    }
 }
 
 #[cfg(test)]
